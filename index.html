@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.20";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.21";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -1299,6 +1299,12 @@ function wireGhin(){
   async function doPullAll(){
     saveGhinCfg();
     const n=await loadRoster();
+    if(n===0){
+      ghinStatus({busy:"Roster came back empty — running diagnostic so we can see your real data…"});
+      try{ await runDiag(); }catch(_){}
+      ghinStatus({error:"Roster returned 0 members. Open Diagnostics below and paste the WHOLE block here — it now includes your login response and a sample record, which I need to scope the roster correctly."});
+      return;
+    }
     ghinStatus({busy:`Loaded ${n} members. Pulling scores…`});
     const r=await pullScores();
     ghinStatus({msg:`✅ Done — ${n} members loaded, scores pulled for ${r.ok}${r.fail?` (${r.fail} failed)`:""}. See the Players tab.`});
