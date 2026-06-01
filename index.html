@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.2";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.3";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -1058,7 +1058,7 @@ function renderGhin(){
       <h2>⛳ Pull from GHIN — Geneva Golf Club</h2>
       <p class="help">Log in with your own GHIN account. The app loads the <b>Geneva Golf Club roster</b> (club #${esc(c.clubId)})
         and pulls every member's score history — directly from GHIN, in your browser. Your password is never stored.</p>
-      <div class="info" id="ghinLoginState"></div>
+      <div class="info" id="ghLoginState"></div>
 
       <div class="row" style="margin-top:10px">
         <div class="field"><label>Email or GHIN #</label><input id="ghEmail" placeholder="you@example.com" autocomplete="username"></div>
@@ -1101,23 +1101,23 @@ function renderGhin(){
 }
 
 function wireGhin(){
+  const set=(id,prop,val)=>{ const el=$("#"+id); if(el) el[prop]=val; };
   const saveGhinCfg=()=>{ const c=state.ghin;
     c.appToken=$("#ghAppToken").value.trim(); c.clubId=$("#ghClub").value.trim();
     c.assocId=$("#ghAssoc").value.trim(); c.pages=Math.max(1,num($("#ghPages").value)||3);
     c.base=$("#ghBase").value.trim()||c.base; save(); };
-  ["ghAppToken","ghClub","ghAssoc","ghPages","ghBase"].forEach(id=>$("#"+id).oninput=saveGhinCfg);
+  ["ghAppToken","ghClub","ghAssoc","ghPages","ghBase"].forEach(id=>{ const el=$("#"+id); if(el) el.oninput=saveGhinCfg; });
 
   const refreshGhinUi=()=>{
     const inn = !!GHIN.token;
-    $("#ghActions").style.display = inn?"":"none";
-    $("#ghLogoutBtn").style.display = inn?"":"none";
-    $("#ghLoginBtn").style.display = inn?"none":"";
+    const a=$("#ghActions"); if(a) a.style.display = inn?"":"none";
+    const lo=$("#ghLogoutBtn"); if(lo) lo.style.display = inn?"":"none";
+    const li=$("#ghLoginBtn"); if(li) li.style.display = inn?"none":"";
     const who = GHIN.me ? `${esc((GHIN.me.first_name||"")+" "+(GHIN.me.last_name||"")).trim()||"member"}` : "";
-    $("#ghLoginState").innerHTML = inn
+    set("ghLoginState","innerHTML", inn
       ? `✅ Logged in${who?" as <b>"+who+"</b>":""}. Club: <b>${esc(state.ghin.clubName||"(detected on next call)")}</b>${state.ghin.clubId?` <span class="muted">#${esc(state.ghin.clubId)}</span>`:""}.`
-      : `Not logged in. Enter your GHIN email/number and password below.`;
+      : `Not logged in. Enter your GHIN email/number and password below.`);
   };
-  refreshGhinUi();
 
   async function doLogin(){
     saveGhinCfg();
@@ -1162,6 +1162,7 @@ function wireGhin(){
       else if(act==="pullall"){ await doPullAll(); }
     }catch(err){ console.error("[GHIN] action failed:", err); ghinStatus({error:(err&&err.message)||String(err)}); }
   };
+  try{ refreshGhinUi(); }catch(err){ console.error("[GHIN] refreshGhinUi failed:", err); }
 
   async function doPullAll(){
     saveGhinCfg();
