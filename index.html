@@ -286,6 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
+const APP_VERSION = "2026-06-01.2";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -1062,22 +1063,23 @@ function renderGhin(){
       <div class="row" style="margin-top:10px">
         <div class="field"><label>Email or GHIN #</label><input id="ghEmail" placeholder="you@example.com" autocomplete="username"></div>
         <div class="field"><label>Password</label><input id="ghPass" type="password" autocomplete="current-password"></div>
-        <button class="primary" id="ghLoginBtn">Log in to GHIN</button>
-        <button id="ghLogoutBtn" style="display:none">Log out</button>
+        <button type="button" class="primary" id="ghLoginBtn" data-act="login">Log in to GHIN</button>
+        <button type="button" id="ghLogoutBtn" data-act="logout" style="display:none">Log out</button>
       </div>
 
       <div id="ghActions" style="display:none;margin-top:14px">
-        <button class="primary" id="ghPullAllBtn" style="font-size:15px;padding:10px 16px">⤓ Pull everyone (roster + scores)</button>
+        <button type="button" class="primary" id="ghPullAllBtn" data-act="pullall" style="font-size:15px;padding:10px 16px">⤓ Pull everyone (roster + scores)</button>
         <div class="legend" style="margin:8px 0 14px"><span class="muted">One click: loads the full roster, then fetches each
           member's scores. Takes ~a minute for a big roster.</span></div>
         <h3>Or do it in steps</h3>
         <div class="row">
           <div class="field"><label>Filter by last name (optional)</label><input id="ghLastName" placeholder="leave blank for all"></div>
-          <button id="ghRosterBtn">Load roster only</button>
-          <button id="ghScoresBtn">Pull scores for loaded members</button>
+          <button type="button" id="ghRosterBtn" data-act="roster">Load roster only</button>
+          <button type="button" id="ghScoresBtn" data-act="scores">Pull scores for loaded members</button>
         </div>
       </div>
       <div id="ghinStatus" style="margin-top:10px"></div>
+      <div class="muted" style="margin-top:10px;font-size:11px">Build ${APP_VERSION}</div>
     </div>
 
     <div class="card">
@@ -1146,19 +1148,28 @@ function wireGhin(){
     return {ok,fail};
   }
 
-  $("#ghLoginBtn").onclick=async()=>{ if(await doLogin()) ghinStatus({msg:'Logged in. Click "Pull everyone" to load the roster and scores.'}); };
-  $("#ghLogoutBtn").onclick=()=>{ GHIN.setToken(null); GHIN.me=null; refreshGhinUi(); ghinStatus({msg:"Logged out."}); };
-  $("#ghRosterBtn").onclick=async()=>{ saveGhinCfg(); try{ const n=await loadRoster(); ghinStatus({msg:`Loaded ${n} member(s). Now pull scores.`}); }catch(e){ ghinStatus({error:e.message}); } };
-  $("#ghScoresBtn").onclick=async()=>{ saveGhinCfg(); try{ const r=await pullScores(); if(r.ok||r.fail) ghinStatus({msg:`Pulled scores for ${r.ok} member(s)${r.fail?`, ${r.fail} failed (see console)`:""}.`}); }catch(e){ ghinStatus({error:e.message}); } };
-  $("#ghPullAllBtn").onclick=async()=>{
-    saveGhinCfg();
+  // Single delegated click handler on the view — survives re-render and can't
+  // silently fail to attach. Every action is wrapped so errors are visible.
+  $("#view-ghin").onclick = async (e)=>{
+    const b = e.target.closest("[data-act]"); if(!b) return;
+    const act = b.dataset.act;
+    console.log("[GHIN] action:", act);
     try{
-      const n=await loadRoster();
-      ghinStatus({busy:`Loaded ${n} members. Pulling scores…`});
-      const r=await pullScores();
-      ghinStatus({msg:`✅ Done — ${n} members loaded, scores pulled for ${r.ok}${r.fail?` (${r.fail} failed)`:""}. See the Players tab.`});
-    }catch(e){ ghinStatus({error:e.message}); }
+      if(act==="login"){ if(await doLogin()) ghinStatus({msg:'Logged in. Click "Pull everyone" to load the roster and scores.'}); }
+      else if(act==="logout"){ GHIN.setToken(null); GHIN.me=null; refreshGhinUi(); ghinStatus({msg:"Logged out."}); }
+      else if(act==="roster"){ saveGhinCfg(); const n=await loadRoster(); ghinStatus({msg:`Loaded ${n} member(s). Now pull scores.`}); }
+      else if(act==="scores"){ saveGhinCfg(); const r=await pullScores(); if(r.ok||r.fail) ghinStatus({msg:`Pulled scores for ${r.ok} member(s)${r.fail?`, ${r.fail} failed (see console)`:""}.`}); }
+      else if(act==="pullall"){ await doPullAll(); }
+    }catch(err){ console.error("[GHIN] action failed:", err); ghinStatus({error:(err&&err.message)||String(err)}); }
   };
+
+  async function doPullAll(){
+    saveGhinCfg();
+    const n=await loadRoster();
+    ghinStatus({busy:`Loaded ${n} members. Pulling scores…`});
+    const r=await pullScores();
+    ghinStatus({msg:`✅ Done — ${n} members loaded, scores pulled for ${r.ok}${r.fail?` (${r.fail} failed)`:""}. See the Players tab.`});
+  }
 }
 function ghinStatus(res){
   const el=$("#ghinStatus"); if(!el) return;
