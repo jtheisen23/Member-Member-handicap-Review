@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.14";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.15";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -964,8 +964,10 @@ const GHIN = {
     let page=1, all=[], guard=0;
     while(guard++ < 60){
       const j = await this.get("/golfers/search.json", {
-        club_id:cfg.clubId, association_id:cfg.assocId, status:"Active",
-        last_name:lastName||undefined, per_page:100, page
+        // exact param order/shape from the working app
+        club_id:cfg.clubId, association_id:cfg.assocId, source:"GHINcom",
+        page, per_page:100, status:"Active",
+        last_name:lastName||undefined
       });
       const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
       all = all.concat(list);
@@ -1016,7 +1018,10 @@ function fmtGhinErr(body){
 function ghinDebug(){
   const el=document.querySelector("#ghinDebug"); if(!el) return;
   const body=(GHIN.lastBody||"").slice(0,1200);
-  el.textContent = `Last request:\n${GHIN.lastUrl||"-"}\n\nStatus: ${GHIN.lastStatus}\n\nResponse (first 1200 chars):\n${body||"(empty)"}`;
+  const tok=(state.ghin.appToken||"").slice(0,6);
+  el.textContent =
+    `Build ${APP_VERSION} | appToken starts "${tok}…" | logged in: ${GHIN.token?"yes":"no"}\n\n`+
+    `Last request:\n${GHIN.lastUrl||"-"}\n\nStatus: ${GHIN.lastStatus}\n\nResponse (first 1200 chars):\n${body||"(empty)"}`;
 }
 
 /* Players import: detect a players CSV vs rounds CSV; supports combined wide rows */
