@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.12";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.13";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -912,13 +912,20 @@ const GHIN = {
     const tok = gu.golfer_user_token || gu.token || data.token || data.golfer_user_token;
     if(!tok) throw new Error("Logged in but no token found in the response.");
     this.setToken(tok); this.me=gu;
-    // Auto-detect the member's club so we can scope everything to Geneva.
-    const clubId = gu.club_id || gu.default_club_id || (gu.clubs&&gu.clubs[0]&&gu.clubs[0].id);
-    const clubName = gu.club_name || (gu.clubs&&gu.clubs[0]&&gu.clubs[0].club_name) || "";
-    const assoc = gu.association_id || gu.assoc_id || (gu.associations&&gu.associations[0]&&gu.associations[0].id);
-    if(clubId && !cfg.clubId){ cfg.clubId=String(clubId); }
-    if(clubName){ cfg.clubName=clubName; }
-    if(assoc && !cfg.assocId){ cfg.assocId=String(assoc); }
+    this.golferId = gu.id || gu.golfer_id || gu.ghin || null;
+    // Read the member's real club + association from the login response and use
+    // them (the hardcoded 106/52147 are just fallbacks).
+    const aff = gu.clubs || gu.club_affiliations || gu.golfer_club_affiliations || gu.memberships || [];
+    const fc  = Array.isArray(aff) && aff.length ? aff[0] : {};
+    const clubId   = gu.club_id || gu.default_club_id || fc.club_id || fc.id;
+    const clubName = gu.club_name || fc.club_name || fc.name || cfg.clubName;
+    const assoc    = gu.association_id || gu.assoc_id || fc.association_id ||
+                     (gu.associations&&gu.associations[0]&&gu.associations[0].id) ||
+                     (fc.association&&fc.association.id);
+    if(clubId)   cfg.clubId  = String(clubId);     // prefer detected
+    if(clubName) cfg.clubName = clubName;
+    if(assoc)    cfg.assocId = String(assoc);
+    console.log("[GHIN] login detected club_id=%s association_id=%s name=%s", cfg.clubId, cfg.assocId, cfg.clubName);
     save();
     return gu;
   },
@@ -932,9 +939,8 @@ const GHIN = {
     this.lastUrl = url.toString();
     console.log("[GHIN] GET", this.lastUrl);
     let res;
-    // NOTE: no Content-Type on GET — sending application/json makes the API read
-    // params from the (empty) body and ignore the query string ("… not present").
-    try{ res = await fetch(this.lastUrl, { headers:{ "Authorization":"Bearer "+this.token, "Accept":"application/json" } }); }
+    // Match the working app's headers exactly.
+    try{ res = await fetch(this.lastUrl, { headers:{ "Authorization":"Bearer "+this.token, "Accept":"application/json", "Content-Type":"application/json; charset=utf-8" } }); }
     catch(e){ this.lastStatus="network/CORS error"; this.lastBody=String(e); ghinDebug(); throw new Error("Network/CORS error reaching GHIN: "+e.message); }
     const body = await res.text();
     this.lastStatus=res.status; this.lastBody=body; ghinDebug();
