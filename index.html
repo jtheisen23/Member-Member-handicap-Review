@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.13";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.14";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -314,7 +314,7 @@ const DEFAULT_STATE = () => ({
   },
   ghin: {            // GHIN API integration (see Import dialog / Help)
     base:"https://api2.ghin.com/api/v1",
-    appToken:"gNPT5it7vAWZ2/k+7xYU1RK41B8EJfqAuBWfjy9qdrJIBoviYpTcsfOqz4AkJnFYvDt6yZ7HMUMeb+PW7YhP9ytdgGqBMFN4q/8O7FvvFw5ZbSm5edAt5Sv29od1jq2uOWQUufCPesOZti5BLb95sdOCbRv1kXkOED7DoehlqMp15b7HGWbYhGqONtHCv6o2wcyTKpkuCDV6QjC1dNHXABzck46XMaaRXJxT0/en44cICHAFlWKpuhF32cWNhH1jHACtKfyp+nFjcjTrhxRh3Lshp+c/C9bNAYI7arT7rgbE2nX1ZMEP3I1MUKhwCT3GK4CttK5V1bginFNMYPNTSMTbtm2Am6LN1+QuGGSTEGoGU7bdKoavAdicB7VZ7zTMSpzVnNheNGRMBZgS9p2KkFuIe3VolQLD00wReYTutgygDGdc0VxMftc2kxdPAB9trpJW+MsTzLv885yslUoYaKtkI2oWpWNA8qh/qBZaZROGAji9e6NtPetA39ycwOHkKOEqGyhr37HgNmpY4CIuQNACmkpMn9sPr4uIPLEh7ueSIxoU225DCkI6WB0yT3EItsG//Zn8OH52/IMFXcimlq19M2u6t9/dVjtfJhG36mgxVa06HtBGCbv6WMAooZQOkk4eYaGmuYF6cpjndvTLa4pz1QowdGZq+ZdBdc9eeWE=",   // static GHINcom client token required in the login body
+    appToken:"4XxmdKDLAnV5vdfV97PNGNsp7z2Z1z3Pax84WMf26NUCitoArI8aWd24m/IUApBpmXR/zCHAwofHDao1EOUBp7tvGnJAUiv9AcFmVnNuaDWUS6I1Sha7nQqcnM0Pz7qEc9ZwHUvimGj/jvI02vNOFAK3lw8qDjsrW2jmbH2f8uE43qGqkH5WDxL68CzCDpvKGNvfOKny+4hhLDpg7xMBRqjAu0FgyEIzppiik12c+kYOO8ig5c44FC95x5JHXz+QjhEuayh6QhhxXwAEvmitOirsPpyCJiT2hYx2VEgpoxNrn3gEVDoEy8fy2MjC+XcZy9DdAorWo7MjT8M+rSKG2d78Hbsv4W3ic2fgIuGzRFZVKNAkB85/0tUjjqdZJT1/5wtkjx2ail/S0KeGgrZeHWaZvQNWgWwKL75Vw2o055HjoqWIap4T9wacwW4mtIhaAA3M2kVTMzmgqTXbjMAdfZuBwJWByeCnAt6/Ij4WpUT4cooyLWhV3sflDd4xvsvfeE8/6cTm6E0gxwXg/aUDhOPTbF5x6hslNMleSmDsdvUlmo3yAk4x/I7BeqwWwYN3bTei0ZsMhRHVTx4I1SJR9GV2Ud1B3fwkvJ+19Ds5oA+8GBDgXdTV7ldTV7i/9wHMTfsLmMSp8HBq+NxCenFKuxIJ+3LDSifdzqkL7YFYGz4=",   // static GHINcom client token (from the working app)
     clubId:"52147",       // Geneva Golf Club's GHIN club id (for roster load)
     clubName:"Geneva Golf Club",
     assocId:"106",        // Geneva's GHIN association id (required for the club roster search)
@@ -339,7 +339,12 @@ function migrate(s){
   s.ghin={...d.ghin,...(s.ghin||{})};
   if(!s.ghin.clubId) s.ghin.clubId=d.ghin.clubId;        // ensure Geneva default
   if(!s.ghin.clubName) s.ghin.clubName=d.ghin.clubName;
-  if(!s.ghin.appToken) s.ghin.appToken=d.ghin.appToken;  // ensure app token default
+  // Keep the shipped app token in sync; if it changed (e.g. old token in saved
+  // state), adopt the new one and force a fresh login so the new bearer is used.
+  if(s.ghin.appToken !== d.ghin.appToken){
+    s.ghin.appToken = d.ghin.appToken;
+    try{ sessionStorage.removeItem("mmhr_ghin_token"); }catch(e){}
+  }
   if(!s.ghin.assocId) s.ghin.assocId=d.ghin.assocId;     // ensure Geneva association (106)
   s.players=s.players||[]; s.teams=s.teams||[];
   return s;
