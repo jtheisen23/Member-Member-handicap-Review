@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.16";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.17";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -1231,13 +1231,31 @@ function wireGhin(){
   try{ refreshGhinUi(); }catch(err){ console.error("[GHIN] refreshGhinUi failed:", err); }
 
   async function runDiag(){
-    ghinStatus({busy:"Running diagnostic — searching by your own golfer id…"});
-    const gid = GHIN.golferId;
-    if(!gid){ ghinStatus({error:"No golfer id captured from login — log out and back in."}); return; }
-    // Mirrors the working app's profile call (search.json?golfer_id=…).
-    const j = await GHIN.get("/golfers/search.json", { golfer_id:gid, per_page:25, page:1 });
-    const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
-    ghinStatus({msg:`✅ Diagnostic OK — golfer_id search returned ${list.length} record(s). So search.json + query params WORK; the club roster issue is about club_id/association_id scope. See Diagnostics.`});
+    ghinStatus({busy:"Running diagnostic — trying several GHIN call shapes…"});
+    const me = GHIN.me||{};
+    const ln = me.last_name || "a";
+    const gid = GHIN.golferId || me.ghin || me.golfer_id || "";
+    const tests = [
+      {label:"A search.json last_name+state",     path:"/golfers/search.json", params:{last_name:ln, state:"IL", per_page:25, page:1}},
+      {label:"B search.json last_name+country",   path:"/golfers/search.json", params:{last_name:ln, country:"USA", per_page:25, page:1}},
+      {label:"C search.json golfer_id",           path:"/golfers/search.json", params:{golfer_id:gid, per_page:25, page:1}},
+      {label:"D search.json club_id+association", path:"/golfers/search.json", params:{club_id:state.ghin.clubId, association_id:state.ghin.assocId, status:"Active", per_page:100, page:1}},
+      {label:"E golfers.json global_search+term", path:"/golfers.json", params:{global_search:true, search:ln, club_id:state.ghin.clubId, per_page:25, page:1}},
+      {label:"F followed_golfers/{id}",           path:`/followed_golfers/${gid}.json`, params:{}}
+    ];
+    let report = `Build ${APP_VERSION} | token ${(state.ghin.appToken||"").slice(0,6)}…\n`+
+                 `golferId=${gid||"(none)"} | me.last_name=${me.last_name||"(none)"} | clubId=${state.ghin.clubId} | assoc=${state.ghin.assocId}\n\n`;
+    for(const t of tests){
+      try{
+        const j = await GHIN.get(t.path, {...t.params});
+        const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
+        report += `${t.label}: OK (${list.length} records)\n`;
+      }catch(e){
+        report += `${t.label}: FAIL — ${(e&&e.message)||e}\n`;
+      }
+    }
+    const el=document.querySelector("#ghinDebug"); if(el) el.textContent=report;
+    ghinStatus({msg:"Diagnostic complete — expand Diagnostics and paste the whole block."});
   }
 
   async function doPullAll(){
