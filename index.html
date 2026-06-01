@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.15";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.16";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -1135,6 +1135,9 @@ function renderGhin(){
           <button type="button" id="ghRosterBtn" data-act="roster">Load roster only</button>
           <button type="button" id="ghScoresBtn" data-act="scores">Pull scores for loaded members</button>
         </div>
+        <div class="row" style="margin-top:6px">
+          <button type="button" class="small" data-act="diag">🔧 Run diagnostic (search by my own GHIN id)</button>
+        </div>
       </div>
       <div id="ghinStatus" style="margin-top:10px"></div>
       <details style="margin-top:12px"><summary class="muted" style="font-size:12px">Diagnostics (copy this if something fails)</summary>
@@ -1222,9 +1225,20 @@ function wireGhin(){
       else if(act==="roster"){ saveGhinCfg(); const n=await loadRoster(); ghinStatus({msg:`Loaded ${n} member(s). Now pull scores.`}); }
       else if(act==="scores"){ saveGhinCfg(); const r=await pullScores(); if(r.ok||r.fail) ghinStatus({msg:`Pulled scores for ${r.ok} member(s)${r.fail?`, ${r.fail} failed (see console)`:""}.`}); }
       else if(act==="pullall"){ await doPullAll(); }
+      else if(act==="diag"){ await runDiag(); }
     }catch(err){ console.error("[GHIN] action failed:", err); ghinStatus({error:(err&&err.message)||String(err)}); }
   };
   try{ refreshGhinUi(); }catch(err){ console.error("[GHIN] refreshGhinUi failed:", err); }
+
+  async function runDiag(){
+    ghinStatus({busy:"Running diagnostic — searching by your own golfer id…"});
+    const gid = GHIN.golferId;
+    if(!gid){ ghinStatus({error:"No golfer id captured from login — log out and back in."}); return; }
+    // Mirrors the working app's profile call (search.json?golfer_id=…).
+    const j = await GHIN.get("/golfers/search.json", { golfer_id:gid, per_page:25, page:1 });
+    const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
+    ghinStatus({msg:`✅ Diagnostic OK — golfer_id search returned ${list.length} record(s). So search.json + query params WORK; the club roster issue is about club_id/association_id scope. See Diagnostics.`});
+  }
 
   async function doPullAll(){
     saveGhinCfg();
