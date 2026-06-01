@@ -1,0 +1,13 @@
+# Local GHIN pulls (may contain personal score data) — never commit
+ghin-out/
+*.local.json
+player.json
+ghins.txt
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+node_modules/

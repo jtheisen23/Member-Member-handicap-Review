@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Member-Member Handicap Review — Geneva Golf Club</title>
+<style>
+  :root{
+    --green:#1b5e20; --green-2:#2e7d32; --green-light:#e8f5e9;
+    --ink:#1c2024; --muted:#5b6670; --line:#dfe3e6; --bg:#f4f6f5;
+    --card:#ffffff; --accent:#0b6e4f;
+    --flag-high:#c62828; --flag-med:#ef6c00; --flag-low:#f9a825; --ok:#2e7d32;
+    --chip:#eef2f1;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);font-size:14px;line-height:1.45}
+  header.app{background:linear-gradient(135deg,var(--green),var(--green-2));color:#fff;padding:14px 20px;
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  header.app h1{font-size:18px;margin:0;font-weight:650;letter-spacing:.2px}
+  header.app .sub{font-size:12px;opacity:.9;margin-top:2px}
+  header.app .logo{font-size:26px}
+  header.app .spacer{flex:1}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button,.btn{font:inherit;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink);
+    padding:7px 12px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  button:hover{background:#f0f3f2}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button.primary:hover{filter:brightness(1.06)}
+  button.ghost{background:transparent;border-color:rgba(255,255,255,.5);color:#fff}
+  button.ghost:hover{background:rgba(255,255,255,.12)}
+  button.danger{color:var(--flag-high);border-color:#f0c0c0}
+  button.small{padding:4px 8px;font-size:12px;border-radius:6px}
+  nav.tabs{display:flex;gap:4px;padding:0 16px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  nav.tabs button{border:none;background:none;border-bottom:3px solid transparent;border-radius:0;
+    padding:12px 14px;color:var(--muted);font-weight:600}
+  nav.tabs button.active{color:var(--green);border-bottom-color:var(--green)}
+  nav.tabs button:hover{background:#f6f8f7}
+  main{padding:18px;max-width:1400px;margin:0 auto}
+  .view{display:none}
+  .view.active{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  .card h2{margin:0 0 12px;font-size:15px}
+  .card h3{margin:14px 0 8px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:12px;color:var(--muted);font-weight:600}
+  input,select,textarea{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+  input[type=number]{width:90px}
+  textarea{width:100%;min-height:120px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{background:#fafbfb;cursor:pointer;user-select:none;position:sticky;top:0;font-size:12px;color:var(--muted)}
+  th.no-sort{cursor:default}
+  tbody tr:hover{background:#f6f8f7}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .tablewrap{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:10px}
+  .chip{display:inline-block;background:var(--chip);border-radius:20px;padding:2px 9px;font-size:11px;font-weight:600;margin:1px 2px}
+  .flag{display:inline-block;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;margin:1px}
+  .flag.high{background:#fdecea;color:var(--flag-high)}
+  .flag.med{background:#fff3e0;color:var(--flag-med)}
+  .flag.low{background:#fff8e1;color:#9a7d00}
+  .flag.ok{background:var(--green-light);color:var(--ok)}
+  .sev-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .muted{color:var(--muted)}
+  .pill{padding:2px 8px;border-radius:6px;font-weight:700;font-size:12px}
+  .pill.r{background:#fdecea;color:var(--flag-high)}
+  .pill.o{background:#fff3e0;color:var(--flag-med)}
+  .pill.y{background:#fff8e1;color:#9a7d00}
+  .pill.g{background:var(--green-light);color:var(--ok)}
+  .help{font-size:12px;color:var(--muted);margin:6px 0}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+  .stat{background:#fafbfb;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .stat .v{font-size:20px;font-weight:700}
+  .stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  dialog{border:none;border-radius:14px;padding:0;max-width:880px;width:94%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  dialog::backdrop{background:rgba(0,0,0,.45)}
+  .modal-head{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);gap:10px}
+  .modal-head h2{margin:0;font-size:16px}
+  .modal-body{padding:18px;max-height:72vh;overflow:auto}
+  .modal-foot{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+  .close-x{margin-left:auto;border:none;background:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted)}
+  .spark{vertical-align:middle}
+  .team-board{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .team-card{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fafbfb}
+  .team-card h4{margin:0 0 8px;font-size:13px}
+  .team-slot{border:1px dashed var(--line);border-radius:8px;padding:8px;margin-bottom:6px;min-height:38px;background:#fff;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;background:var(--green-light);color:var(--green)}
+  .warn{background:#fff3e0;border:1px solid #ffd699;color:#8a5300;padding:8px 12px;border-radius:8px;font-size:13px;margin:8px 0}
+  .info{background:#e3f2fd;border:1px solid #b3dbff;color:#0d47a1;padding:10px 12px;border-radius:8px;font-size:13px;margin:8px 0}
+  .ok-box{background:var(--green-light);border:1px solid #a5d6a7;color:#1b5e20;padding:8px 12px;border-radius:8px;font-size:13px}
+  code{background:#f0f3f2;padding:1px 5px;border-radius:4px;font-size:12px}
+  .toprow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  .toprow input[type=search]{min-width:220px}
+  details summary{cursor:pointer;font-weight:600;color:var(--accent)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+  .hcp-table td,.hcp-table th{padding:6px 10px}
+  .nowrap{white-space:nowrap}
+  .right{text-align:right}
+  @media(max-width:760px){.team-board{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="app">
+  <div class="logo">⛳</div>
+  <div>
+    <h1>Member-Member Handicap Review</h1>
+    <div class="sub">Geneva Golf Club · Geneva, IL</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="toolbar">
+    <button class="ghost" id="btnSample">Load sample data</button>
+    <button class="ghost" id="btnImport">Import…</button>
+    <button class="ghost" id="btnExport">Export backup</button>
+    <button class="ghost danger" id="btnClear">Clear all</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-view="players" class="active">Players</button>
+  <button data-view="anomalies">Anomaly Review</button>
+  <button data-view="teams">Team Builder</button>
+  <button data-view="settings">Course &amp; Rules</button>
+  <button data-view="help">Help</button>
+</nav>
+
+<main>
+  <!-- ============ PLAYERS ============ -->
+  <section class="view active" id="view-players">
+    <div class="card">
+      <div class="toprow">
+        <input type="search" id="playerSearch" placeholder="Search name or GHIN #…" />
+        <select id="teeFilter">
+          <option value="white">Show White-tee course handicaps</option>
+          <option value="blue">Show Blue-tee course handicaps</option>
+        </select>
+        <span class="spacer" style="flex:1"></span>
+        <button class="primary" id="btnAddPlayer">+ Add player</button>
+      </div>
+      <div class="tablewrap">
+        <table id="playersTable">
+          <thead>
+            <tr>
+              <th data-sort="name">Player</th>
+              <th data-sort="ghin">GHIN #</th>
+              <th data-sort="index" class="num">Index</th>
+              <th data-sort="ch9" class="num" title="9-hole course handicap at selected tee">CH (9)</th>
+              <th data-sort="ch18" class="num" title="18-hole course handicap at selected tee">CH (18)</th>
+              <th data-sort="rounds" class="num">Rounds</th>
+              <th data-sort="avg" class="num" title="Average score differential">Avg Diff</th>
+              <th data-sort="recent" class="num" title="Average of last 5 differentials">Last 5</th>
+              <th data-sort="low" class="num" title="Lowest differential = scoring potential">Low</th>
+              <th data-sort="trend" class="no-sort">Trend</th>
+              <th data-sort="sev" class="num" title="Anomaly severity score">Flags</th>
+              <th class="no-sort"></th>
+            </tr>
+          </thead>
+          <tbody id="playersBody"></tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <span><span class="sev-dot" style="background:var(--flag-high)"></span>High concern</span>
+        <span><span class="sev-dot" style="background:var(--flag-med)"></span>Worth a look</span>
+        <span><span class="sev-dot" style="background:var(--flag-low)"></span>Minor</span>
+        <span><span class="sev-dot" style="background:var(--ok)"></span>Clean</span>
+        <span class="muted">· Click a row for full round history. Diff = (Adj. Gross − Rating) × 113 / Slope.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ANOMALIES ============ -->
+  <section class="view" id="view-anomalies">
+    <div class="card">
+      <h2>Anomaly Review — posting &amp; scoring behavior</h2>
+      <p class="help">Players are ranked by how much their scoring pattern could distort a fair match. This is a
+        <b>conversation starter, not an accusation</b> — every flag has a plain-English reason. Review the underlying
+        rounds before drawing conclusions.</p>
+      <div id="anomalyList"></div>
+    </div>
+  </section>
+
+  <!-- ============ TEAMS ============ -->
+  <section class="view" id="view-teams">
+    <div class="card">
+      <h2>Team Builder <span class="muted" style="font-weight:400">— 2 members per team</span></h2>
+      <div class="toprow">
+        <button class="primary" id="btnAutoBalance">⚖︎ Auto-balance teams</button>
+        <button id="btnClearTeams">Clear pairings</button>
+        <button id="btnExportTeams">Export teams (CSV)</button>
+        <span class="spacer" style="flex:1"></span>
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+          <span class="muted">Balance by:</span>
+          <select id="balanceMetric">
+            <option value="index">Combined Index</option>
+            <option value="potential">Scoring potential (Low diff)</option>
+          </select>
+        </label>
+      </div>
+      <div id="teamSummary"></div>
+      <div class="grid2" style="margin-top:10px">
+        <div class="card" style="margin:0">
+          <h3>Unassigned players</h3>
+          <div id="poolList"></div>
+        </div>
+        <div class="card" style="margin:0">
+          <h3>Teams</h3>
+          <div id="teamsList"></div>
+          <button class="small" id="btnAddTeam" style="margin-top:8px">+ Add empty team</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="view" id="view-settings">
+    <div class="card">
+      <h2>Course tee ratings</h2>
+      <div class="info">⚠︎ These are <b>editable defaults</b> — confirm them against the official Geneva Golf Club
+        scorecard before finalizing. Course handicaps and all team allocations depend on these numbers.</div>
+      <div class="tablewrap" style="max-height:none">
+        <table class="hcp-table">
+          <thead><tr>
+            <th>Tee</th>
+            <th class="num">18-hole Rating</th><th class="num">18-hole Slope</th><th class="num">18-hole Par</th>
+            <th class="num">9-hole Rating</th><th class="num">9-hole Slope</th><th class="num">9-hole Par</th>
+          </tr></thead>
+          <tbody id="teeBody"></tbody>
+        </table>
+      </div>
+      <p class="help">WHS Course Handicap (18) = Index × (Slope ÷ 113) + (Rating − Par). For 9 holes the index is halved
+        and the 9-hole rating/slope/par are used.</p>
+    </div>
+    <div class="card">
+      <h2>Tournament rounds &amp; handicap allocation</h2>
+      <p class="help">Edit the allocation percentages if your committee uses different numbers. These drive the figures shown in Team Builder.</p>
+      <div class="tablewrap" style="max-height:none">
+        <table id="rulesTable" class="hcp-table">
+          <thead><tr><th>Round</th><th>Format</th><th>Tees</th><th>Allocation</th></tr></thead>
+          <tbody id="rulesBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Anomaly detection thresholds</h2>
+      <div class="row" id="thresholds"></div>
+    </div>
+  </section>
+
+  <!-- ============ HELP ============ -->
+  <section class="view" id="view-help">
+    <div class="card" id="helpContent"></div>
+  </section>
+</main>
+
+<!-- ===== Player edit dialog ===== -->
+<dialog id="playerDialog">
+  <div class="modal-head"><h2 id="pdTitle">Player</h2><button class="close-x" data-close>&times;</button></div>
+  <div class="modal-body" id="pdBody"></div>
+  <div class="modal-foot">
+    <button data-close>Cancel</button>
+    <button class="danger" id="pdDelete">Delete player</button>
+    <button class="primary" id="pdSave">Save</button>
+  </div>
+</dialog>
+
+<!-- ===== Import dialog ===== -->
+<dialog id="importDialog">
+  <div class="modal-head"><h2>Import data</h2><button class="close-x" data-close>&times;</button></div>
+  <div class="modal-body" id="importBody"></div>
+  <div class="modal-foot">
+    <button data-close>Close</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   Member-Member Handicap Review — single-file app
+   Data persists in your browser (localStorage). Nothing is sent anywhere.
+   ========================================================================= */
+
+const STORE_KEY = "mmhr_data_v1";
+
+/* ---------- Default course settings (EDITABLE in Settings tab) ----------
+   Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
+   real scorecard. 9-hole defaults are derived (half the 18-hole rating/par,
+   same slope) until you enter the exact 9-hole figures. */
+const DEFAULT_STATE = () => ({
+  tees: [
+    { name:"White", r18:70.0, s18:132, par18:72, r9:35.0, s9:132, par9:36 },
+    { name:"Blue",  r18:71.5, s18:134, par18:72, r9:35.8, s9:134, par9:36 }
+  ],
+  rules: {
+    // percentages are decimals (0.35 = 35%)
+    r1:{ name:"Scramble",               tee:"White", lowPct:0.35, highPct:0.15, mult:0.50 },
+    r2:{ name:"Modified Alternate Shot", tee:"Blue",  teamPct:0.50 },
+    r3:{ name:"Partner's Best Ball",     tee:"White", indivPct:0.90 },
+    r4:{ name:"Total Score of Partners", tee:"Blue",  indivPct:1.00 }
+  },
+  thresholds: {
+    minRounds:5,        // fewer rounds than this => index not well established
+    staleDays:120,      // no posting in this many days => stale index
+    volatility:6.0,     // stdev of differentials above this => inconsistent
+    improving:3.0,      // last-5 avg better than index by this => trending hot
+    inflating:3.0,      // recent diffs worse than older by this => possible inflation
+    potentialGap:3.0    // index minus low differential gap => sandbag potential
+  },
+  players: [],
+  teams: []   // array of [playerIdOrNull, playerIdOrNull]
+});
+
+let state = load();
+
+function load(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(raw){ const s = JSON.parse(raw); return migrate(s); }
+  }catch(e){ console.warn("load failed", e); }
+  return DEFAULT_STATE();
+}
+function migrate(s){
+  const d = DEFAULT_STATE();
+  s.tees = s.tees||d.tees; s.rules=s.rules||d.rules; s.thresholds={...d.thresholds,...(s.thresholds||{})};
+  s.players=s.players||[]; s.teams=s.teams||[];
+  return s;
+}
+function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+
+/* ---------------------------- helpers ---------------------------- */
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const uid = () => Math.random().toString(36).slice(2,10);
+const num = v => { const n = parseFloat(v); return isNaN(n)?null:n; };
+const fmt = (v,d=1) => v===null||v===undefined||isNaN(v) ? "—" : Number(v).toFixed(d);
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+function daysSince(dateStr){ const t=Date.parse(dateStr); if(isNaN(t)) return null; return Math.floor((Date.now()-t)/86400000); }
+
+function teeByName(n){ return state.tees.find(t=>t.name.toLowerCase()===String(n).toLowerCase()) || state.tees[0]; }
+
+/* Differential for a round. Prefer a provided differential; else compute.
+   For 9-hole rounds without a stored differential we approximate an
+   18-hole-equivalent by doubling the 9-hole differential. */
+function roundDifferential(rd){
+  if(rd.differential!=null && !isNaN(rd.differential)) return Number(rd.differential);
+  const score=num(rd.score), rating=num(rd.rating), slope=num(rd.slope);
+  if(score==null||rating==null||slope==null) return null;
+  let d = (score - rating) * 113 / slope;
+  if(Number(rd.holes)===9) d = d*2; // rough 18-hole equivalent
+  return d;
+}
+
+/* WHS handicap index from a list of 18-hole-equivalent differentials. */
+function computeIndex(diffs){
+  const d = diffs.filter(x=>x!=null).slice().sort((a,b)=>a-b);
+  const n = d.length;
+  if(n<3) return null;
+  const tbl = [ // [maxRounds, countUsed, adjustment]
+    [3,1,-2.0],[4,1,-1.0],[5,1,0],[6,2,-1.0],[8,2,0],[11,3,0],
+    [14,4,0],[16,5,0],[18,6,0],[19,7,0],[20,8,0]
+  ];
+  const last20 = d; // already sorted ascending; we used all available (<=20 ideally)
+  let use=1, adj=0;
+  for(const [mx,cnt,a] of tbl){ if(n<=mx){ use=cnt; adj=a; break; } use=8; adj=0; }
+  const lowest = last20.slice(0,use);
+  const avg = lowest.reduce((s,x)=>s+x,0)/lowest.length;
+  return Math.round((avg+adj)*10)/10;
+}
+
+/* Course handicaps */
+function ch18(index, tee){ if(index==null) return null; return Math.round(index*tee.s18/113 + (tee.r18-tee.par18)); }
+function ch9(index, tee){ if(index==null) return null; return Math.round((index/2)*tee.s9/113 + (tee.r9-tee.par9)); }
+
+/* Per-player computed metrics */
+function playerMetrics(p){
+  const rounds = (p.rounds||[]).slice().sort((a,b)=>Date.parse(b.date||0)-Date.parse(a.date||0));
+  const diffsChrono = rounds.map(roundDifferential).filter(x=>x!=null);     // newest-first
+  const last20 = diffsChrono.slice(0,20);
+  const computedIndex = computeIndex(last20);
+  const index = (p.index!=null && !isNaN(p.index)) ? Number(p.index) : computedIndex;
+  const n = diffsChrono.length;
+  const avg = n? diffsChrono.reduce((s,x)=>s+x,0)/n : null;
+  const last5 = diffsChrono.slice(0,5);
+  const recent = last5.length? last5.reduce((s,x)=>s+x,0)/last5.length : null;
+  const low = n? Math.min(...diffsChrono) : null;
+  const mean = avg;
+  const variance = n>1 ? diffsChrono.reduce((s,x)=>s+(x-mean)**2,0)/(n-1) : 0;
+  const stdev = Math.sqrt(variance);
+  // older half avg vs newer half avg (trend; positive => getting worse/higher)
+  let trend=null;
+  if(n>=6){
+    const half=Math.floor(n/2);
+    const newer=diffsChrono.slice(0,half);
+    const older=diffsChrono.slice(half);
+    const na=newer.reduce((s,x)=>s+x,0)/newer.length;
+    const oa=older.reduce((s,x)=>s+x,0)/older.length;
+    trend = na-oa; // newer minus older
+  }
+  const lastDate = rounds.length? rounds[0].date : null;
+  const stale = lastDate? daysSince(lastDate) : null;
+  return {rounds,diffsChrono,index,computedIndex,n,avg,recent,low,stdev,trend,lastDate,stale,last5};
+}
+
+/* Anomaly evaluation -> {flags:[{sev,label,why}], score} */
+function evaluate(p){
+  const m = playerMetrics(p);
+  const T = state.thresholds;
+  const flags=[];
+  const add=(sev,label,why)=>flags.push({sev,label,why});
+
+  if(m.n===0){ add("med","No rounds","No posted rounds on file — index can't be reviewed."); }
+  else {
+    if(m.n < T.minRounds) add("med","Few rounds", `Only ${m.n} round(s) posted (min ${T.minRounds} for a stable index).`);
+    if(m.stale!=null && m.stale > T.staleDays)
+      add("low","Stale posting", `Last round was ${m.stale} days ago — index may not reflect current form.`);
+    if(m.stdev > T.volatility)
+      add("med","Inconsistent", `High scoring spread (σ=${fmt(m.stdev)}). Volatile scoring widens net-score swings.`);
+    if(m.index!=null && m.recent!=null && (m.index - m.recent) > T.improving)
+      add("high","Trending hot", `Last-5 differential (${fmt(m.recent)}) is ${fmt(m.index-m.recent)} better than index (${fmt(m.index)}) — playing above their number.`);
+    if(m.trend!=null && m.trend > T.inflating)
+      add("high","Scores rising", `Recent differentials average ${fmt(m.trend)} higher than earlier ones — index drifting up before the event.`);
+    if(m.index!=null && m.low!=null && (m.index - m.low) > (T.potentialGap+5))
+      add("med","Big upside", `Best round (${fmt(m.low)}) is well below index (${fmt(m.index)}) — capable of a low net on a good day.`);
+    // posting variety checks
+    const holes = new Set(m.rounds.map(r=>Number(r.holes)||18));
+    const nine = m.rounds.filter(r=>Number(r.holes)===9).length;
+    if(m.n>=5 && nine/m.n>0.8) add("low","Mostly 9-hole","Posts almost entirely 9-hole rounds.");
+    const courses = new Set(m.rounds.map(r=>(r.course||"").trim().toLowerCase()).filter(Boolean));
+    if(m.n>=8 && courses.size===1) add("low","Single course","All rounds at one course — limited sample for the index.");
+    const tourneys = m.rounds.filter(r=>/^(t|c)$/i.test(String(r.type||"")));
+    // index vs computed mismatch
+    if(m.computedIndex!=null && p.index!=null && Math.abs(Number(p.index)-m.computedIndex)>2.5)
+      add("med","Index mismatch", `Stored index (${fmt(p.index)}) differs from one computed from posted rounds (${fmt(m.computedIndex)}).`);
+  }
+  if(flags.length===0) add("ok","Clean","Nothing unusual in posting or scoring.");
+
+  const w={high:5,med:2,low:1,ok:0};
+  const score = flags.reduce((s,f)=>s+w[f.sev],0);
+  return {m,flags,score};
+}
+
+/* =========================== RENDER: PLAYERS =========================== */
+let sortKey="sev", sortDir=-1;
+function renderPlayers(){
+  const tee = teeByName($("#teeFilter").value);
+  const q = ($("#playerSearch").value||"").toLowerCase().trim();
+  const rows = state.players.map(p=>{
+    const ev = evaluate(p);
+    const m = ev.m;
+    return {
+      p, ev, m,
+      name:(p.lastName?p.lastName+", ":"")+(p.firstName||"")||p.name||"(unnamed)",
+      ghin:p.ghin||"",
+      index:m.index, ch9:ch9(m.index,tee), ch18:ch18(m.index,tee),
+      rounds:m.n, avg:m.avg, recent:m.recent, low:m.low, trend:m.trend, sev:ev.score
+    };
+  }).filter(r=> !q || r.name.toLowerCase().includes(q) || String(r.ghin).includes(q));
+
+  rows.sort((a,b)=>{
+    let x=a[sortKey], y=b[sortKey];
+    if(sortKey==="name"||sortKey==="ghin"){ x=String(x).toLowerCase(); y=String(y).toLowerCase(); return x<y?-1*sortDir:x>y?1*sortDir:0; }
+    x = x==null?-Infinity:x; y=y==null?-Infinity:y;
+    return (x-y)*sortDir;
+  });
+
+  const sevDot = s => { const c = s>=5?"var(--flag-high)":s>=2?"var(--flag-med)":s>=1?"var(--flag-low)":"var(--ok)"; return `<span class="sev-dot" style="background:${c}"></span>`; };
+  const body = rows.map(r=>{
+    const topFlags = r.ev.flags.filter(f=>f.sev!=="ok").slice(0,2).map(f=>`<span class="flag ${f.sev}">${esc(f.label)}</span>`).join("");
+    return `<tr data-id="${r.p.id}">
+      <td><b>${esc(r.name)}</b></td>
+      <td class="muted">${esc(r.ghin)}</td>
+      <td class="num">${fmt(r.index)}</td>
+      <td class="num">${r.ch9==null?"—":r.ch9}</td>
+      <td class="num">${r.ch18==null?"—":r.ch18}</td>
+      <td class="num">${r.rounds}</td>
+      <td class="num">${fmt(r.avg)}</td>
+      <td class="num">${fmt(r.recent)}</td>
+      <td class="num">${fmt(r.low)}</td>
+      <td>${sparkline(r.m.diffsChrono)}</td>
+      <td class="num">${sevDot(r.sev)}${topFlags||'<span class="flag ok">OK</span>'}</td>
+      <td><button class="small" data-edit="${r.p.id}">Edit</button></td>
+    </tr>`;
+  }).join("");
+  $("#playersBody").innerHTML = body || `<tr><td colspan="12" class="muted" style="padding:24px;text-align:center">No players yet. Use <b>Load sample data</b> or <b>+ Add player</b>.</td></tr>`;
+}
+
+/* tiny SVG sparkline of differentials, oldest->newest (lower=better) */
+function sparkline(diffsNewestFirst){
+  const d = diffsNewestFirst.slice().reverse();
+  if(d.length<2) return '<span class="muted">—</span>';
+  const w=70,h=20,pad=2;
+  const mn=Math.min(...d), mx=Math.max(...d), rng=(mx-mn)||1;
+  const pts=d.map((v,i)=>{
+    const x=pad+(i*(w-2*pad))/(d.length-1);
+    const y=pad+(v-mn)/rng*(h-2*pad); // higher diff (worse) plotted lower? we want lower=better=up
+    return `${x.toFixed(1)},${(h-y).toFixed(1)}`;
+  }).join(" ");
+  return `<svg class="spark" width="${w}" height="${h}"><polyline fill="none" stroke="#2e7d32" stroke-width="1.5" points="${pts}"/></svg>`;
+}
+
+/* =========================== RENDER: ANOMALIES =========================== */
+function renderAnomalies(){
+  const evals = state.players.map(p=>({p,...evaluate(p)})).sort((a,b)=>b.score-a.score);
+  const sevPill = s => s>=5?'<span class="pill r">High</span>':s>=2?'<span class="pill o">Review</span>':s>=1?'<span class="pill y">Minor</span>':'<span class="pill g">Clean</span>';
+  const html = evals.map(e=>{
+    const name=(e.p.lastName?e.p.lastName+", ":"")+(e.p.firstName||"")||e.p.name||"(unnamed)";
+    const flagsHtml = e.flags.map(f=>`<li><span class="flag ${f.sev}">${esc(f.label)}</span> ${esc(f.why)}</li>`).join("");
+    const m=e.m;
+    return `<div class="card" style="margin:0 0 10px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <b style="font-size:15px">${esc(name)}</b>
+        <span class="muted">${esc(e.p.ghin||"")}</span>
+        ${sevPill(e.score)}
+        <span class="spacer" style="flex:1"></span>
+        <span class="chip">Index ${fmt(m.index)}</span>
+        <span class="chip">${m.n} rounds</span>
+        <span class="chip">Avg ${fmt(m.avg)}</span>
+        <span class="chip">Last5 ${fmt(m.recent)}</span>
+        <span class="chip">Low ${fmt(m.low)}</span>
+        <button class="small" data-edit="${e.p.id}">View</button>
+      </div>
+      <ul style="margin:8px 0 0;padding-left:18px">${flagsHtml}</ul>
+    </div>`;
+  }).join("");
+  $("#anomalyList").innerHTML = html || '<p class="muted">No players yet.</p>';
+}
+
+/* =========================== RENDER: TEAMS =========================== */
+function teamHandicaps(p1,p2){
+  const white=teeByName(state.rules.r1.tee), blue=teeByName(state.rules.r2.tee);
+  const i1=playerMetrics(p1).index, i2=playerMetrics(p2).index;
+  const out={};
+  // R1 scramble: (lowPct*lowCH18 + highPct*highCH18) * mult  (White, 18-hole CHs)
+  const w1=ch18(i1,teeByName(state.rules.r1.tee)), w2=ch18(i2,teeByName(state.rules.r1.tee));
+  if(w1!=null&&w2!=null){ const lo=Math.min(w1,w2),hi=Math.max(w1,w2);
+    out.r1=Math.round((state.rules.r1.lowPct*lo + state.rules.r1.highPct*hi)*state.rules.r1.mult); }
+  // R2 mod alt: teamPct * (CH9blue p1 + CH9blue p2)
+  const b1n=ch9(i1,teeByName(state.rules.r2.tee)), b2n=ch9(i2,teeByName(state.rules.r2.tee));
+  if(b1n!=null&&b2n!=null) out.r2=Math.round(state.rules.r2.teamPct*(b1n+b2n));
+  // R3 best ball: indivPct * CH9 white each
+  const w1n=ch9(i1,teeByName(state.rules.r3.tee)), w2n=ch9(i2,teeByName(state.rules.r3.tee));
+  if(w1n!=null) out.r3a=Math.round(state.rules.r3.indivPct*w1n);
+  if(w2n!=null) out.r3b=Math.round(state.rules.r3.indivPct*w2n);
+  // R4 total: indivPct * CH9 blue each
+  if(b1n!=null) out.r4a=Math.round(state.rules.r4.indivPct*b1n);
+  if(b2n!=null) out.r4b=Math.round(state.rules.r4.indivPct*b2n);
+  out.i1=i1; out.i2=i2;
+  return out;
+}
+function playerName(id){ const p=state.players.find(x=>x.id===id); if(!p) return ""; return (p.lastName?p.lastName+", ":"")+(p.firstName||"")||p.name||"(unnamed)"; }
+
+function renderTeams(){
+  const assigned = new Set();
+  state.teams.forEach(t=>t.forEach(id=>id&&assigned.add(id)));
+  // pool
+  const pool = state.players.filter(p=>!assigned.has(p.id));
+  $("#poolList").innerHTML = pool.length? pool.map(p=>{
+    const m=playerMetrics(p);
+    return `<div class="team-slot"><span><b>${esc(playerName(p.id))}</b> <span class="muted">Idx ${fmt(m.index)}</span></span>
+      <select data-assign="${p.id}"><option value="">Assign to…</option>${
+        state.teams.map((t,i)=>`<option value="${i}" ${t.filter(Boolean).length>=2?'disabled':''}>Team ${i+1}${t.filter(Boolean).length>=2?' (full)':''}</option>`).join("")
+      }</select></div>`;
+  }).join("") : '<p class="muted">All players assigned.</p>';
+
+  // teams
+  $("#teamsList").innerHTML = state.teams.map((t,i)=>{
+    const p1=state.players.find(x=>x.id===t[0]), p2=state.players.find(x=>x.id===t[1]);
+    let alloc="";
+    if(p1&&p2){
+      const h=teamHandicaps(p1,p2);
+      alloc=`<table class="hcp-table" style="margin-top:6px"><tbody>
+        <tr><td><b>R1 Scramble</b> (White)</td><td class="num">Team ${h.r1??"—"}</td></tr>
+        <tr><td><b>R2 Mod-Alt</b> (Blue)</td><td class="num">Team ${h.r2??"—"}</td></tr>
+        <tr><td><b>R3 Best Ball</b> (White)</td><td class="num">${playerName(p1.id).split(",")[0]} ${h.r3a??"—"} / ${playerName(p2.id).split(",")[0]} ${h.r3b??"—"}</td></tr>
+        <tr><td><b>R4 Total</b> (Blue)</td><td class="num">${playerName(p1.id).split(",")[0]} ${h.r4a??"—"} / ${playerName(p2.id).split(",")[0]} ${h.r4b??"—"}</td></tr>
+      </tbody></table>`;
+    }
+    const slot=(idx,id)=>{
+      const m=id?playerMetrics(state.players.find(x=>x.id===id)):null;
+      return `<div class="team-slot">
+        <span>${id?`<b>${esc(playerName(id))}</b> <span class="muted">Idx ${fmt(m.index)}</span>`:'<span class="muted">— empty —</span>'}</span>
+        ${id?`<button class="small" data-remove="${i}:${idx}">remove</button>`:''}
+      </div>`;
+    };
+    const combined = (p1&&p2)?fmt((playerMetrics(p1).index||0)+(playerMetrics(p2).index||0)):"—";
+    return `<div class="team-card">
+      <h4>Team ${i+1} <span class="muted" style="font-weight:400">· combined index ${combined}</span>
+        <button class="small" data-deleteteam="${i}" style="float:right">✕</button></h4>
+      ${slot(0,t[0])}${slot(1,t[1])}
+      ${alloc}
+    </div>`;
+  }).join("") || '<p class="muted">No teams yet — add one or use auto-balance.</p>';
+
+  renderTeamSummary();
+}
+function renderTeamSummary(){
+  const full = state.teams.filter(t=>t[0]&&t[1]);
+  if(full.length<2){ $("#teamSummary").innerHTML=""; return; }
+  const metric = $("#balanceMetric").value;
+  const vals = full.map(t=>{
+    const p1=state.players.find(x=>x.id===t[0]), p2=state.players.find(x=>x.id===t[1]);
+    const m1=playerMetrics(p1), m2=playerMetrics(p2);
+    return metric==="index" ? (m1.index||0)+(m2.index||0) : (m1.low||0)+(m2.low||0);
+  });
+  const mn=Math.min(...vals), mx=Math.max(...vals), spread=mx-mn;
+  const cls = spread<=4?"ok-box":spread<=8?"warn":"warn";
+  $("#teamSummary").innerHTML = `<div class="${cls}">${full.length} full teams. Combined-${metric} ranges
+    ${fmt(mn)} – ${fmt(mx)} (spread ${fmt(spread)}). ${spread<=4?"Well balanced.":"Consider re-pairing to tighten the spread."}</div>`;
+}
+
+/* Auto-balance: pair strongest with weakest to equalize combined metric */
+function autoBalance(){
+  const metric=$("#balanceMetric").value;
+  const ps=state.players.map(p=>{
+    const m=playerMetrics(p);
+    return {id:p.id, v: metric==="index"?(m.index??99):(m.low??99)};
+  }).sort((a,b)=>a.v-b.v);
+  const teams=[];
+  let i=0,j=ps.length-1;
+  while(i<j){ teams.push([ps[i].id, ps[j].id]); i++; j--; }
+  if(i===j) teams.push([ps[i].id, null]); // odd one out
+  state.teams=teams; save(); renderTeams();
+}
+
+/* =========================== RENDER: SETTINGS =========================== */
+function renderSettings(){
+  $("#teeBody").innerHTML = state.tees.map((t,i)=>`
+    <tr>
+      <td><input value="${esc(t.name)}" data-tee="${i}" data-f="name" style="width:90px"></td>
+      <td class="num"><input type="number" step="0.1" value="${t.r18}" data-tee="${i}" data-f="r18"></td>
+      <td class="num"><input type="number" value="${t.s18}" data-tee="${i}" data-f="s18"></td>
+      <td class="num"><input type="number" value="${t.par18}" data-tee="${i}" data-f="par18"></td>
+      <td class="num"><input type="number" step="0.1" value="${t.r9}" data-tee="${i}" data-f="r9"></td>
+      <td class="num"><input type="number" value="${t.s9}" data-tee="${i}" data-f="s9"></td>
+      <td class="num"><input type="number" value="${t.par9}" data-tee="${i}" data-f="par9"></td>
+    </tr>`).join("");
+
+  const r=state.rules;
+  $("#rulesBody").innerHTML = `
+    <tr><td><b>Round 1</b></td><td>${esc(r.r1.name)}</td><td>${esc(r.r1.tee)}</td>
+      <td><input type="number" step="1" value="${r.r1.lowPct*100}" data-rule="r1.lowPct" style="width:60px">% low +
+          <input type="number" step="1" value="${r.r1.highPct*100}" data-rule="r1.highPct" style="width:60px">% high, ×
+          <input type="number" step="1" value="${r.r1.mult*100}" data-rule="r1.mult" style="width:60px">%</td></tr>
+    <tr><td><b>Round 2</b></td><td>${esc(r.r2.name)}</td><td>${esc(r.r2.tee)}</td>
+      <td><input type="number" step="1" value="${r.r2.teamPct*100}" data-rule="r2.teamPct" style="width:60px">% of team 9-hole total</td></tr>
+    <tr><td><b>Round 3</b></td><td>${esc(r.r3.name)}</td><td>${esc(r.r3.tee)}</td>
+      <td><input type="number" step="1" value="${r.r3.indivPct*100}" data-rule="r3.indivPct" style="width:60px">% of each 9-hole CH</td></tr>
+    <tr><td><b>Round 4</b></td><td>${esc(r.r4.name)}</td><td>${esc(r.r4.tee)}</td>
+      <td><input type="number" step="1" value="${r.r4.indivPct*100}" data-rule="r4.indivPct" style="width:60px">% of each 9-hole CH</td></tr>`;
+
+  const T=state.thresholds;
+  const tf=(k,label,step="1")=>`<div class="field"><label>${label}</label><input type="number" step="${step}" value="${T[k]}" data-thr="${k}"></div>`;
+  $("#thresholds").innerHTML =
+    tf("minRounds","Min rounds for stable index")+
+    tf("staleDays","Stale posting (days)")+
+    tf("volatility","Volatility σ flag","0.5")+
+    tf("improving","Trending-hot gap","0.5")+
+    tf("inflating","Score-rising gap","0.5")+
+    tf("potentialGap","Upside gap","0.5");
+}
+
+/* =========================== PLAYER DIALOG =========================== */
+let editingId=null;
+function openPlayer(id){
+  editingId=id;
+  const p = id ? state.players.find(x=>x.id===id) : {id:null,firstName:"",lastName:"",ghin:"",index:"",gender:"M",rounds:[]};
+  $("#pdTitle").textContent = id ? "Edit player" : "Add player";
+  $("#pdDelete").style.display = id ? "" : "none";
+  const rounds = (p.rounds||[]).slice().sort((a,b)=>Date.parse(b.date||0)-Date.parse(a.date||0));
+  const ev = id? evaluate(p) : null;
+  const statBox = ev ? `<div class="grid2" style="margin:10px 0">
+      <div class="stat"><div class="k">Rounds</div><div class="v">${ev.m.n}</div></div>
+      <div class="stat"><div class="k">Avg differential</div><div class="v">${fmt(ev.m.avg)}</div></div>
+      <div class="stat"><div class="k">Last 5</div><div class="v">${fmt(ev.m.recent)}</div></div>
+      <div class="stat"><div class="k">Low (potential)</div><div class="v">${fmt(ev.m.low)}</div></div>
+      <div class="stat"><div class="k">Computed index</div><div class="v">${fmt(ev.m.computedIndex)}</div></div>
+      <div class="stat"><div class="k">Last posted</div><div class="v" style="font-size:14px">${ev.m.lastDate||"—"}${ev.m.stale!=null?` <span class="muted">(${ev.m.stale}d)</span>`:""}</div></div>
+    </div>
+    <div>${ev.flags.map(f=>`<span class="flag ${f.sev}" title="${esc(f.why)}">${esc(f.label)}</span>`).join(" ")}</div>` : "";
+
+  $("#pdBody").innerHTML = `
+    <div class="row">
+      <div class="field"><label>First name</label><input id="pdFirst" value="${esc(p.firstName)}"></div>
+      <div class="field"><label>Last name</label><input id="pdLast" value="${esc(p.lastName)}"></div>
+      <div class="field"><label>GHIN #</label><input id="pdGhin" value="${esc(p.ghin)}"></div>
+      <div class="field"><label>Handicap Index</label><input id="pdIndex" type="number" step="0.1" value="${p.index??""}" placeholder="auto"></div>
+      <div class="field"><label>Gender</label><select id="pdGender"><option value="M" ${p.gender!=="F"?"selected":""}>M</option><option value="F" ${p.gender==="F"?"selected":""}>F</option></select></div>
+    </div>
+    ${statBox}
+    <h3>Posted rounds <span class="muted" style="font-weight:400;text-transform:none">— newest first</span></h3>
+    <div class="tablewrap" style="max-height:300px">
+      <table id="pdRounds"><thead><tr>
+        <th>Date</th><th class="num">Adj. Gross</th><th class="num">Rating</th><th class="num">Slope</th>
+        <th>Tees</th><th class="num">Holes</th><th>Type</th><th class="num">Diff</th><th></th>
+      </tr></thead><tbody>${rounds.map((r,idx)=>roundRow(r,idx)).join("")}</tbody></table>
+    </div>
+    <button class="small" id="pdAddRound" style="margin-top:8px">+ Add round</button>
+    <details style="margin-top:12px"><summary>Paste rounds (CSV or GHIN JSON)</summary>
+      <p class="help">CSV columns: <code>date,score,rating,slope,tees,holes,type,differential</code> (header optional). Or paste a GHIN scores JSON array / golfer object.</p>
+      <textarea id="pdPaste" placeholder="2026-05-20,84,70.0,132,White,18,H&#10;or GHIN JSON…"></textarea>
+      <button class="small primary" id="pdPasteBtn" style="margin-top:6px">Add pasted rounds</button>
+    </details>`;
+
+  // local working copy of rounds
+  $("#playerDialog")._rounds = rounds;
+  bindRoundHandlers();
+  $("#playerDialog").showModal();
+}
+function roundRow(r,idx){
+  const d=roundDifferential(r);
+  return `<tr data-ridx="${idx}">
+    <td><input value="${esc(r.date||"")}" data-r="date" style="width:110px"></td>
+    <td class="num"><input type="number" value="${r.score??""}" data-r="score" style="width:70px"></td>
+    <td class="num"><input type="number" step="0.1" value="${r.rating??""}" data-r="rating" style="width:70px"></td>
+    <td class="num"><input type="number" value="${r.slope??""}" data-r="slope" style="width:60px"></td>
+    <td><input value="${esc(r.tees||"")}" data-r="tees" style="width:70px"></td>
+    <td class="num"><input type="number" value="${r.holes??18}" data-r="holes" style="width:50px"></td>
+    <td><input value="${esc(r.type||"")}" data-r="type" style="width:45px" title="H=home, A=away, C=competition, T=tournament"></td>
+    <td class="num">${fmt(d)}</td>
+    <td><button class="small" data-delr="${idx}">✕</button></td>
+  </tr>`;
+}
+function bindRoundHandlers(){
+  $("#pdAddRound").onclick=()=>{ $("#playerDialog")._rounds.unshift({date:"",score:"",rating:teeByName("White").r18,slope:teeByName("White").s18,tees:"White",holes:18,type:"H"}); refreshRoundsTable(); };
+  $("#pdPasteBtn").onclick=()=>{
+    const txt=$("#pdPaste").value.trim(); if(!txt) return;
+    const parsed=parseRoundsBlob(txt);
+    if(parsed.length){ $("#playerDialog")._rounds = parsed.concat($("#playerDialog")._rounds); refreshRoundsTable(); $("#pdPaste").value=""; }
+    else alert("Couldn't parse any rounds from that text.");
+  };
+  refreshRoundsHandlersOnly();
+}
+function refreshRoundsTable(){
+  const tb=$("#pdRounds").querySelector("tbody");
+  tb.innerHTML=$("#playerDialog")._rounds.map((r,idx)=>roundRow(r,idx)).join("");
+  refreshRoundsHandlersOnly();
+}
+function refreshRoundsHandlersOnly(){
+  $$("#pdRounds [data-delr]").forEach(b=>b.onclick=()=>{ const i=+b.dataset.delr; $("#playerDialog")._rounds.splice(i,1); refreshRoundsTable(); });
+  $$("#pdRounds input").forEach(inp=>inp.oninput=()=>{
+    const tr=inp.closest("tr"); const i=+tr.dataset.ridx; const f=inp.dataset.r;
+    $("#playerDialog")._rounds[i][f]= (f==="date"||f==="tees"||f==="type")?inp.value:num(inp.value);
+    if(["score","rating","slope","holes"].includes(f)){ tr.querySelector("td.num:last-child, td:nth-last-child(2)"); }
+  });
+}
+function savePlayer(){
+  const r=$("#playerDialog")._rounds.filter(x=>x.date||x.score);
+  const data={
+    firstName:$("#pdFirst").value.trim(), lastName:$("#pdLast").value.trim(),
+    ghin:$("#pdGhin").value.trim(), index:num($("#pdIndex").value), gender:$("#pdGender").value,
+    rounds:r
+  };
+  if(editingId){ Object.assign(state.players.find(x=>x.id===editingId), data); }
+  else { state.players.push({id:uid(), ...data}); }
+  save(); $("#playerDialog").close(); renderAll();
+}
+
+/* =========================== IMPORT / PARSING =========================== */
+function parseCSV(text){
+  const rows=[]; let i=0, field="", row=[], inQ=false;
+  while(i<text.length){
+    const c=text[i];
+    if(inQ){ if(c==='"'){ if(text[i+1]==='"'){field+='"';i++;} else inQ=false; } else field+=c; }
+    else { if(c==='"') inQ=true; else if(c===','){row.push(field);field="";} else if(c==='\n'||c==='\r'){ if(field!==""||row.length){row.push(field);rows.push(row);} field="";row=[]; if(c==='\r'&&text[i+1]==='\n')i++; } else field+=c; }
+    i++;
+  }
+  if(field!==""||row.length){row.push(field);rows.push(row);}
+  return rows.filter(r=>r.some(c=>c.trim()!==""));
+}
+const HEADER_ALIASES={
+  date:["date","played","played_at","date_played","play_date","posted","posted_at"],
+  score:["score","adjusted_gross_score","ags","adj_gross","adjusted","gross"],
+  rating:["rating","course_rating","cr"],
+  slope:["slope","slope_rating","sr"],
+  tees:["tees","tee","tee_name","teeset"],
+  holes:["holes","number_of_holes","num_holes","holesplayed"],
+  type:["type","score_type","scoretype"],
+  differential:["differential","diff","score_differential","handicap_differential","sd"],
+  course:["course","course_name","facility"],
+  firstName:["firstname","first_name","first","fname","given"],
+  lastName:["lastname","last_name","last","lname","surname","family"],
+  name:["name","player","golfer","fullname"],
+  ghin:["ghin","ghin_number","ghin_no","ghinnumber","id_number"],
+  index:["index","handicap_index","handicap","hcp","hi","handicapindex"],
+  gender:["gender","sex"]
+};
+function mapHeader(h){ const k=String(h).toLowerCase().replace(/[^a-z0-9]/g,"_").replace(/_+/g,"_").replace(/^_|_$/g,""); for(const key in HEADER_ALIASES){ if(HEADER_ALIASES[key].some(a=>a.replace(/[^a-z0-9]/g,"_")===k||k===key)) return key; } return null; }
+
+function parseRoundsBlob(txt){
+  txt=txt.trim();
+  if(txt[0]==='{'||txt[0]==='['){
+    try{ return roundsFromGhinJson(JSON.parse(txt)); }catch(e){ /*fall through*/ }
+  }
+  // CSV
+  const rows=parseCSV(txt); if(!rows.length) return [];
+  let header=null, start=0;
+  const firstLooksHeader = rows[0].some(c=>mapHeader(c));
+  if(firstLooksHeader){ header=rows[0].map(mapHeader); start=1; }
+  const out=[];
+  for(let r=start;r<rows.length;r++){
+    const cells=rows[r]; const obj={};
+    if(header){ header.forEach((k,ci)=>{ if(k) obj[k]=cells[ci]; }); }
+    else { // positional: date,score,rating,slope,tees,holes,type,differential
+      ["date","score","rating","slope","tees","holes","type","differential"].forEach((k,ci)=>obj[k]=cells[ci]);
+    }
+    if(!obj.date && !obj.score) continue;
+    out.push({ date:(obj.date||"").trim(), score:num(obj.score), rating:num(obj.rating), slope:num(obj.slope),
+      tees:(obj.tees||"").trim(), holes:num(obj.holes)||18, type:(obj.type||"").trim(),
+      differential: obj.differential!=null&&obj.differential!==""?num(obj.differential):null, course:(obj.course||"").trim() });
+  }
+  return out;
+}
+/* Map GHIN API JSON shapes into our round model. Tolerant of field variants. */
+function roundsFromGhinJson(j){
+  let arr=[];
+  if(Array.isArray(j)) arr=j;
+  else if(Array.isArray(j.scores)) arr=j.scores;
+  else if(j.golfer && Array.isArray(j.golfer.scores)) arr=j.golfer.scores;
+  else if(Array.isArray(j.revision_scores)) arr=j.revision_scores;
+  else if(Array.isArray(j.data)) arr=j.data;
+  else arr=[j];
+  const g=v=>v;
+  return arr.map(s=>({
+    date: (s.played_at||s.posted_at||s.adjusted_played_at||s.date||"").slice(0,10),
+    score: num(s.adjusted_gross_score ?? s.gross_score ?? s.score),
+    rating: num(s.course_rating ?? s.rating),
+    slope: num(s.slope_rating ?? s.slope),
+    tees: (s.tee_name||s.tee_set_side||s.teeset_ratings_name||s.tees||"").toString(),
+    holes: num(s.number_of_holes ?? s.holes) || 18,
+    type: (s.score_type_display_full || s.score_type || s.type || "").toString().charAt(0).toUpperCase(),
+    differential: s.differential!=null ? num(s.differential) : (s.score_differential!=null?num(s.score_differential):null),
+    course: (s.course_name||s.facility_name||s.course||"").toString()
+  })).filter(r=>r.date||r.score);
+}
+/* Players import: detect a players CSV vs rounds CSV; supports combined wide rows */
+function importPlayersBlob(txt){
+  txt=txt.trim();
+  if(txt[0]==='{'||txt[0]==='['){
+    try{
+      const j=JSON.parse(txt);
+      // full app backup?
+      if(j.players && Array.isArray(j.players)){ state=migrate(j); save(); return {players:state.players.length, msg:"Restored full backup."}; }
+      // golfer search result?
+      const list = Array.isArray(j)?j : (j.golfers||j.players||j.data||[]);
+      let added=0;
+      list.forEach(g=>{ upsertPlayer({
+        firstName:g.first_name||g.firstName||"", lastName:g.last_name||g.lastName||"",
+        ghin:String(g.ghin||g.ghin_number||g.id||""), index:num(g.handicap_index??g.hi??g.index),
+        gender:g.gender||"M"
+      }); added++; });
+      save(); return {players:added, msg:`Imported ${added} player(s) from JSON.`};
+    }catch(e){ return {error:"Invalid JSON: "+e.message}; }
+  }
+  const rows=parseCSV(txt); if(!rows.length) return {error:"No rows found."};
+  const header=rows[0].map(mapHeader);
+  if(!header.some(Boolean)) return {error:"Couldn't recognize any column headers. Expected columns like name, ghin, index (and optionally round columns)."};
+  const has=k=>header.includes(k);
+  const isRounds = has("date") && has("score");
+  let added=0, roundsAdded=0;
+  for(let r=1;r<rows.length;r++){
+    const cells=rows[r]; const o={}; header.forEach((k,ci)=>{ if(k) o[k]=cells[ci]; });
+    const fn=o.firstName||"", ln=o.lastName||"";
+    let first=fn, last=ln;
+    if(!fn&&!ln&&o.name){ const parts=String(o.name).split(/,|\s+/).filter(Boolean); if(String(o.name).includes(",")){last=parts[0];first=parts.slice(1).join(" ");} else {first=parts[0];last=parts.slice(1).join(" ");} }
+    const key=(o.ghin||"").trim() || (last+"|"+first).toLowerCase();
+    const p=upsertPlayer({firstName:first.trim(),lastName:last.trim(),ghin:(o.ghin||"").trim(),index:num(o.index),gender:o.gender||"M"});
+    if(o.index!=null&&o.index!=="") p.index=num(o.index);
+    added++;
+    if(isRounds){
+      p.rounds=p.rounds||[];
+      p.rounds.push({date:(o.date||"").trim(),score:num(o.score),rating:num(o.rating),slope:num(o.slope),
+        tees:(o.tees||"").trim(),holes:num(o.holes)||18,type:(o.type||"").trim(),
+        differential:o.differential?num(o.differential):null,course:(o.course||"").trim()});
+      roundsAdded++;
+    }
+  }
+  save();
+  return {players:added, rounds:roundsAdded, msg:`Processed ${added} row(s)${isRounds?`, added ${roundsAdded} round(s)`:""}.`};
+}
+function upsertPlayer(data){
+  let p=null;
+  if(data.ghin) p=state.players.find(x=>x.ghin&&x.ghin===data.ghin);
+  if(!p) p=state.players.find(x=>x.firstName===data.firstName && x.lastName===data.lastName && data.lastName);
+  if(p){ if(data.index!=null) p.index=data.index; if(data.gender) p.gender=data.gender; if(!p.ghin&&data.ghin)p.ghin=data.ghin; }
+  else { p={id:uid(),rounds:[],...data}; state.players.push(p); }
+  return p;
+}
+
+function openImport(){
+  $("#importBody").innerHTML = `
+    <div class="info"><b>Three ways to load data.</b> Everything stays in your browser.</div>
+    <h3>1 · Players (and optionally rounds) — CSV or JSON</h3>
+    <p class="help">Player columns: <code>firstName,lastName,ghin,index,gender</code>. To load rounds in the same file,
+      add <code>date,score,rating,slope,tees,holes,type</code> columns (one row per round). Or paste a GHIN golfer-search JSON.</p>
+    <textarea id="impPlayers" placeholder="lastName,firstName,ghin,index&#10;Smith,John,1234567,8.4"></textarea>
+    <div class="row" style="margin-top:6px">
+      <input type="file" id="impFile" accept=".csv,.json,.txt">
+      <button class="primary small" id="impPlayersBtn">Import players</button>
+    </div>
+    <hr style="margin:16px 0;border:none;border-top:1px solid var(--line)">
+    <h3>2 · Rounds for one existing player — GHIN JSON or CSV</h3>
+    <p class="help">Pick a player, then paste the GHIN scores JSON (the response from the scores endpoint) or a rounds CSV.</p>
+    <div class="row">
+      <select id="impRoundPlayer">${state.players.map(p=>`<option value="${p.id}">${esc(playerName(p.id))} ${p.ghin?'('+esc(p.ghin)+')':''}</option>`).join("")}</select>
+    </div>
+    <textarea id="impRounds" placeholder='Paste GHIN scores JSON or CSV rows…' style="margin-top:6px"></textarea>
+    <button class="primary small" id="impRoundsBtn" style="margin-top:6px">Add rounds to player</button>
+    <hr style="margin:16px 0;border:none;border-top:1px solid var(--line)">
+    <h3>3 · Live GHIN API</h3>
+    <p class="help">Browsers block direct calls to GHIN (CORS), so live fetching needs the small helper proxy included in
+      this project (<code>ghin-proxy.js</code>). See the <b>Help</b> tab → "Pulling round history from GHIN" for the exact steps.
+      Once running, paste the JSON it returns into box&nbsp;2 above.</p>
+    <div id="impResult"></div>`;
+  $("#impFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{$("#impPlayers").value=rd.result;}; rd.readAsText(f); };
+  $("#impPlayersBtn").onclick=()=>{ const res=importPlayersBlob($("#impPlayers").value); showImpResult(res); renderAll(); };
+  $("#impRoundsBtn").onclick=()=>{
+    const pid=$("#impRoundPlayer").value; const p=state.players.find(x=>x.id===pid);
+    if(!p){ showImpResult({error:"Add a player first."}); return; }
+    const rounds=parseRoundsBlob($("#impRounds").value);
+    if(!rounds.length){ showImpResult({error:"No rounds parsed."}); return; }
+    p.rounds=(p.rounds||[]).concat(rounds); save(); showImpResult({msg:`Added ${rounds.length} round(s) to ${playerName(pid)}.`}); renderAll();
+  };
+  $("#importDialog").showModal();
+}
+function showImpResult(res){
+  const el=$("#impResult");
+  if(res.error) el.innerHTML=`<div class="warn">${esc(res.error)}</div>`;
+  else el.innerHTML=`<div class="ok-box">${esc(res.msg||"Done.")}</div>`;
+}
+
+/* =========================== EXPORT =========================== */
+function exportBackup(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  downloadBlob(blob,"member-member-handicap-backup.json");
+}
+function exportTeams(){
+  const lines=[["Team","Player","GHIN","Index","CH9_White","CH9_Blue"]];
+  state.teams.forEach((t,i)=>t.forEach(id=>{ if(!id)return; const p=state.players.find(x=>x.id===id); const m=playerMetrics(p);
+    lines.push([i+1,playerName(id),p.ghin||"",fmt(m.index),ch9(m.index,teeByName("White"))??"",ch9(m.index,teeByName("Blue"))??""]); }));
+  const csv=lines.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  downloadBlob(new Blob([csv],{type:"text/csv"}),"teams.csv");
+}
+function downloadBlob(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+
+/* =========================== SAMPLE DATA =========================== */
+function loadSample(){
+  if(state.players.length && !confirm("Replace current data with sample data?")) return;
+  const white=teeByName("White"), blue=teeByName("Blue");
+  const mkRounds=(specs)=>specs.map(([date,score,tee,holes,type])=>{const t=teeByName(tee);return {date,score,rating:holes===9?t.r9:t.r18,slope:holes===9?t.s9:t.s18,tees:tee,holes,type:type||"H"};});
+  const today=new Date("2026-05-25");
+  const d=(daysAgo)=>{const x=new Date(today);x.setDate(x.getDate()-daysAgo);return x.toISOString().slice(0,10);};
+  state.players=[
+    // steady player
+    {id:uid(),firstName:"Mike",lastName:"Anderson",ghin:"2100345",index:8.6,gender:"M",rounds:mkRounds(
+      [[d(5),82,"White",18],[d(12),84,"White",18],[d(19),80,"Blue",18],[d(26),85,"White",18],[d(33),83,"White",18],[d(40),81,"Blue",18],[d(54),86,"White",18],[d(61),84,"White",18,"C"],[d(75),82,"White",18],[d(90),85,"White",18],[d(110),83,"Blue",18],[d(130),87,"White",18]])},
+    // sandbagger: index drifting UP recently
+    {id:uid(),firstName:"Rick",lastName:"Donnelly",ghin:"2100789",index:14.2,gender:"M",rounds:mkRounds(
+      [[d(4),98,"White",18],[d(10),96,"White",18],[d(17),99,"White",18],[d(24),95,"White",18],[d(40),88,"White",18],[d(55),86,"Blue",18],[d(70),85,"White",18],[d(85),84,"White",18,"C"],[d(100),87,"White",18],[d(120),85,"White",18]])},
+    // trending HOT: last 5 way better than index
+    {id:uid(),firstName:"Tom",lastName:"Vasquez",ghin:"2101122",index:11.8,gender:"M",rounds:mkRounds(
+      [[d(3),78,"White",18],[d(9),80,"Blue",18],[d(16),79,"White",18],[d(23),77,"White",18,"C"],[d(30),81,"White",18],[d(45),90,"White",18],[d(60),92,"White",18],[d(80),89,"White",18],[d(100),91,"White",18],[d(120),93,"White",18]])},
+    // few rounds -> not established
+    {id:uid(),firstName:"Greg",lastName:"Holloway",ghin:"2102200",index:6.1,gender:"M",rounds:mkRounds(
+      [[d(8),77,"White",18],[d(22),79,"Blue",18],[d(36),76,"White",18]])},
+    // volatile
+    {id:uid(),firstName:"Dave",lastName:"Kowalski",ghin:"2103301",index:16.5,gender:"M",rounds:mkRounds(
+      [[d(6),88,"White",18],[d(13),104,"White",18],[d(20),90,"White",18],[d(27),101,"White",18],[d(34),87,"Blue",18],[d(48),99,"White",18],[d(62),92,"White",18],[d(78),105,"White",18],[d(95),89,"White",18],[d(115),98,"White",18]])},
+    // stale + single course
+    {id:uid(),firstName:"Phil",lastName:"Romano",ghin:"2104400",index:10.3,gender:"M",rounds:mkRounds(
+      [[d(160),85,"White",18],[d(175),87,"White",18],[d(190),84,"White",18],[d(205),86,"White",18],[d(220),88,"White",18]])},
+    // clean mid
+    {id:uid(),firstName:"Joe",lastName:"Bianchi",ghin:"2105500",index:12.9,gender:"M",rounds:mkRounds(
+      [[d(5),88,"White",18],[d(12),90,"Blue",18],[d(19),87,"White",18],[d(26),91,"White",18],[d(33),89,"White",18,"C"],[d(47),86,"White",18],[d(61),92,"White",18],[d(75),88,"Blue",18],[d(90),90,"White",18],[d(110),89,"White",18]])},
+    // low handicap clean
+    {id:uid(),firstName:"Steve",lastName:"Park",ghin:"2106600",index:3.4,gender:"M",rounds:mkRounds(
+      [[d(4),74,"Blue",18],[d(11),76,"White",18],[d(18),73,"Blue",18,"C"],[d(25),77,"White",18],[d(32),75,"White",18],[d(46),74,"Blue",18],[d(60),78,"White",18],[d(80),75,"White",18],[d(100),76,"Blue",18],[d(125),74,"White",18]])},
+  ];
+  state.teams=[]; save(); renderAll(); switchView("players");
+}
+
+/* =========================== EVENTS / WIRING =========================== */
+function switchView(v){
+  $$("nav.tabs button").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
+  $$(".view").forEach(s=>s.classList.toggle("active",s.id==="view-"+v));
+  if(v==="anomalies") renderAnomalies();
+  if(v==="teams") renderTeams();
+  if(v==="settings") renderSettings();
+  if(v==="help") renderHelp();
+}
+function renderAll(){ renderPlayers(); if($("#view-anomalies").classList.contains("active"))renderAnomalies(); if($("#view-teams").classList.contains("active"))renderTeams(); }
+
+document.addEventListener("DOMContentLoaded",()=>{
+  // tabs
+  $("#tabs").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b) switchView(b.dataset.view); });
+  // header buttons
+  $("#btnSample").onclick=loadSample;
+  $("#btnImport").onclick=openImport;
+  $("#btnExport").onclick=exportBackup;
+  $("#btnClear").onclick=()=>{ if(confirm("Delete ALL players, teams and reset settings? This cannot be undone.")){ state=DEFAULT_STATE(); save(); renderAll(); switchView("players"); } };
+  // players table
+  $("#playerSearch").oninput=renderPlayers;
+  $("#teeFilter").onchange=renderPlayers;
+  $("#btnAddPlayer").onclick=()=>openPlayer(null);
+  $("#playersTable").addEventListener("click",e=>{
+    const eb=e.target.closest("[data-edit]"); if(eb){ openPlayer(eb.dataset.edit); return; }
+    const th=e.target.closest("th[data-sort]"); if(th && !th.classList.contains("no-sort")){ const k=th.dataset.sort; if(sortKey===k)sortDir*=-1; else {sortKey=k;sortDir=(k==="name"||k==="ghin")?1:-1;} renderPlayers(); return; }
+    const tr=e.target.closest("tr[data-id]"); if(tr) openPlayer(tr.dataset.id);
+  });
+  // anomalies (delegated view button)
+  $("#anomalyList").addEventListener("click",e=>{ const b=e.target.closest("[data-edit]"); if(b) openPlayer(b.dataset.edit); });
+  // dialogs
+  $$("#playerDialog [data-close], #importDialog [data-close]").forEach(b=>b.onclick=e=>e.target.closest("dialog").close());
+  $("#pdSave").onclick=savePlayer;
+  $("#pdDelete").onclick=()=>{ if(editingId && confirm("Delete this player?")){ state.players=state.players.filter(x=>x.id!==editingId); state.teams=state.teams.map(t=>t.map(id=>id===editingId?null:id)); save(); $("#playerDialog").close(); renderAll(); } };
+  // teams
+  $("#btnAutoBalance").onclick=autoBalance;
+  $("#btnClearTeams").onclick=()=>{ state.teams=[]; save(); renderTeams(); };
+  $("#btnAddTeam").onclick=()=>{ state.teams.push([null,null]); save(); renderTeams(); };
+  $("#btnExportTeams").onclick=exportTeams;
+  $("#balanceMetric").onchange=renderTeams;
+  $("#teamsList").addEventListener("click",e=>{
+    const rm=e.target.closest("[data-remove]"); if(rm){ const [ti,si]=rm.dataset.remove.split(":").map(Number); state.teams[ti][si]=null; save(); renderTeams(); return; }
+    const dt=e.target.closest("[data-deleteteam]"); if(dt){ state.teams.splice(+dt.dataset.deleteteam,1); save(); renderTeams(); return; }
+  });
+  $("#poolList").addEventListener("change",e=>{
+    const sel=e.target.closest("[data-assign]"); if(!sel||sel.value==="")return;
+    const pid=sel.dataset.assign; const ti=+sel.value; const slot=state.teams[ti][0]?1:0;
+    state.teams[ti][slot]=pid; save(); renderTeams();
+  });
+  // settings inputs (delegated)
+  $("#view-settings").addEventListener("input",e=>{
+    const t=e.target;
+    if(t.dataset.tee!=null){ const i=+t.dataset.tee,f=t.dataset.f; state.tees[i][f]= f==="name"?t.value:num(t.value); save(); }
+    else if(t.dataset.rule){ const [r,f]=t.dataset.rule.split("."); state.rules[r][f]=num(t.value)/100; save(); }
+    else if(t.dataset.thr){ state.thresholds[t.dataset.thr]=num(t.value); save(); }
+  });
+
+  renderPlayers();
+});
+
+/* =========================== HELP =========================== */
+function renderHelp(){
+  $("#helpContent").innerHTML = `
+  <h2>How to use this tool</h2>
+  <p>Everything is stored locally in <b>this browser</b> (no account, no server). Use <b>Export backup</b> to save a
+  JSON file you can re-import later or share with another committee member.</p>
+
+  <h3>1 · Get players in</h3>
+  <ul>
+    <li><b>Load sample data</b> (top bar) to see how it works with 8 example members.</li>
+    <li><b>+ Add player</b> to type members one at a time.</li>
+    <li><b>Import…</b> to paste/upload a CSV of members. Minimal columns: <code>lastName,firstName,ghin,index</code>.
+        A GHIN golfer-search JSON also works.</li>
+  </ul>
+
+  <h3 id="ghin">2 · Pulling round history from GHIN</h3>
+  <div class="info">GHIN has no open public API, and your browser will <b>block direct calls</b> to GHIN's servers
+  (CORS). There are two practical paths:</div>
+  <p><b>Path A — paste JSON (no setup).</b> If you can view a member's scores in the GHIN app/website and capture the
+  scores JSON response, paste it into <b>Import… → box 2</b> for that player. The tool understands GHIN's score fields
+  (<code>played_at</code>, <code>adjusted_gross_score</code>, <code>course_rating</code>, <code>slope_rating</code>,
+  <code>number_of_holes</code>, <code>differential</code>, etc.).</p>
+  <p><b>Path B — run the included proxy (for live fetching).</b> The file <code>ghin-proxy.js</code> in this project is a
+  tiny Node helper that logs into GHIN and fetches a golfer's scores, sidestepping CORS. From a terminal:</p>
+  <pre style="background:#f0f3f2;padding:10px;border-radius:8px;overflow:auto"><code>node ghin-proxy.js --email YOU@example.com --password '****' --ghin 1234567 &gt; rick.json</code></pre>
+  <p>Then paste <code>rick.json</code> into <b>Import… → box 2</b>. Run it per member, or pass <code>--out folder</code>
+  to batch a list (see comments in the file). <i>Use your own GHIN credentials and only pull data your club is entitled
+  to review.</i></p>
+
+  <h3>3 · The Players view</h3>
+  <p>Columns: Handicap <b>Index</b>, <b>Course Handicap</b> for 9 and 18 holes at the tee you pick, number of
+  <b>Rounds</b>, average score <b>Differential</b>, the <b>Last 5</b> differential average, the player's <b>Low</b>
+  (best) differential = their scoring potential, a <b>trend sparkline</b> (oldest→newest, up = better), and
+  <b>Flags</b>. Click any row for the full round history and per-round differentials.</p>
+
+  <h3>4 · Anomaly Review — what the flags mean</h3>
+  <ul>
+    <li><span class="flag high">Trending hot</span> Last-5 differentials are much better than the stored index — the
+      player is currently playing above their handicap (could clean up at net).</li>
+    <li><span class="flag high">Scores rising</span> Recent differentials are drifting <i>higher</i> than earlier ones —
+      classic pattern of an index being inflated before an event.</li>
+    <li><span class="flag med">Inconsistent</span> Large spread between good and bad rounds; net results swing widely.</li>
+    <li><span class="flag med">Big upside</span> Their best round is far below their index — capable of a very low net.</li>
+    <li><span class="flag med">Few rounds / Index mismatch</span> Not enough data for a stable index, or the stored
+      index doesn't match what their posted rounds imply.</li>
+    <li><span class="flag low">Stale posting / Mostly 9-hole / Single course</span> Posting habits that make the index
+      less reliable.</li>
+  </ul>
+  <p class="help">These are <b>screening signals</b>, not proof of anything. Always open the round history and use
+  judgment. Thresholds are adjustable in <b>Course &amp; Rules → Anomaly detection</b>.</p>
+
+  <h3>5 · Team Builder</h3>
+  <p>Add empty teams and assign two members each, or hit <b>Auto-balance</b> to pair strongest-with-weakest so combined
+  team strength is as even as possible (balance by combined index or by scoring potential). Each full team shows the
+  <b>playing handicaps for all four rounds</b> using your allocation rules:</p>
+  <ul>
+    <li><b>R1 Scramble (White):</b> ${state.rules.r1.lowPct*100}% of the low player's CH + ${state.rules.r1.highPct*100}% of the high player's CH, × ${state.rules.r1.mult*100}% (one team number).</li>
+    <li><b>R2 Modified Alternate Shot (Blue):</b> ${state.rules.r2.teamPct*100}% of the team's combined 9-hole handicap.</li>
+    <li><b>R3 Partner's Best Ball (White):</b> ${state.rules.r3.indivPct*100}% of each player's 9-hole handicap.</li>
+    <li><b>R4 Total Score of Partners (Blue):</b> ${state.rules.r4.indivPct*100}% of each player's 9-hole handicap.</li>
+  </ul>
+  <p>Edit tees, allocations and thresholds anytime in <b>Course &amp; Rules</b>. Export the final pairings with
+  <b>Export teams (CSV)</b>.</p>
+
+  <div class="warn">⚠︎ Confirm the Geneva Golf Club tee ratings/slopes (Settings tab) against the official scorecard —
+  the pre-filled values are best-known estimates and every handicap figure depends on them.</div>`;
+}
+</script>
+</body>
+</html>
