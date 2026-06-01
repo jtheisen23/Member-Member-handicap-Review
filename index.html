@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.19";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.20";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -925,6 +925,7 @@ const GHIN = {
     this.lastStatus=res.status; this.lastBody=body; ghinDebug();
     if(!res.ok) throw new Error(`Login failed (${res.status}). ${fmtGhinErr(body)}`);
     const data = JSON.parse(body);
+    this.loginRaw = data;
     const gu = data.golfer_user || data.user || data;
     const tok = gu.golfer_user_token || gu.token || data.token || data.golfer_user_token;
     if(!tok) throw new Error("Logged in but no token found in the response.");
@@ -1271,15 +1272,26 @@ function wireGhin(){
     ];
     let report = `Build ${APP_VERSION} | token ${(state.ghin.appToken||"").slice(0,6)}…\n`+
                  `golferId=${gid||"(none)"} | me.last_name=${me.last_name||"(none)"} | clubId=${state.ghin.clubId} | assoc=${state.ghin.assocId}\n\n`;
+    // 1) Dump the login response so we can see the real name/golferId/club/association fields.
+    try{ report += "LOGIN RESPONSE (first 1500 chars):\n"+JSON.stringify(GHIN.loginRaw).slice(0,1500)+"\n\n"; }
+    catch(e){ report += "LOGIN RESPONSE: (unavailable)\n\n"; }
+    // 2) Run the call-shape probes.
     for(const t of tests){
       try{
         const j = await GHIN.get(t.path, {...t.params});
         const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
-        report += `${t.label}: OK (${list.length} records)\n`;
+        const inClub = list.filter(g=>golferInClub(g, state.ghin.clubId)).length;
+        report += `${t.label}: OK (${list.length} records, ${inClub} in club ${state.ghin.clubId})\n`;
       }catch(e){
         report += `${t.label}: FAIL — ${(e&&e.message)||e}\n`;
       }
     }
+    // 3) Dump one sample golfer record so we can see its club/association fields.
+    try{
+      const j = await GHIN.get("/golfers/search.json", {last_name:ln, state:"IL", per_page:5, page:1});
+      const list = j.golfers || j.data || [];
+      report += "\nSAMPLE GOLFER RECORD (first 1000 chars):\n"+JSON.stringify(list[0]||{}).slice(0,1000)+"\n";
+    }catch(e){ report += "\nSAMPLE GOLFER RECORD: FAIL — "+((e&&e.message)||e)+"\n"; }
     const el=document.querySelector("#ghinDebug"); if(el) el.textContent=report;
     ghinStatus({msg:"Diagnostic complete — expand Diagnostics and paste the whole block."});
   }
