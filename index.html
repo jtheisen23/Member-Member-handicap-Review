@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.6";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.7";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -898,13 +898,16 @@ const GHIN = {
   async login(emailOrGhin, password){
     const cfg=state.ghin;
     if(!cfg.appToken) throw new Error("Missing GHINcom app token (paste it in the GHIN settings field first).");
-    const res = await fetch(cfg.base + "/golfer_login.json", {
+    this.lastUrl = cfg.base + "/golfer_login.json";
+    const res = await fetch(this.lastUrl, {
       method:"POST",
-      headers:{ "Content-Type":"application/json", "Accept":"application/json" },
-      body: JSON.stringify({ user:{ email_or_ghin:emailOrGhin, password, remember_me:true, source:"GHINcom" }, token: cfg.appToken })
+      headers:{ "Content-Type":"application/json; charset=utf-8", "Accept":"application/json" },
+      body: JSON.stringify({ user:{ email_or_ghin:emailOrGhin, password, remember_me:"true", source:"GHINcom" }, token: cfg.appToken })
     });
-    if(!res.ok) throw new Error(`Login failed (${res.status}). ${(await ghinErr(res))}`);
-    const data = await res.json();
+    const body = await res.text();
+    this.lastStatus=res.status; this.lastBody=body; ghinDebug();
+    if(!res.ok) throw new Error(`Login failed (${res.status}). ${fmtGhinErr(body)}`);
+    const data = JSON.parse(body);
     const gu = data.golfer_user || data.user || data;
     const tok = gu.golfer_user_token || gu.token || data.token || data.golfer_user_token;
     if(!tok) throw new Error("Logged in but no token found in the response.");
@@ -926,25 +929,28 @@ const GHIN = {
     const url = new URL(cfg.base + path);
     if(params.source===undefined) params.source="GHINcom";
     Object.entries(params).forEach(([k,v])=>{ if(v!=null&&v!=="") url.searchParams.set(k,String(v)); });
-    console.log("[GHIN] GET", url.toString());
-    const res = await fetch(url.toString(), { headers:{ "Authorization":"Bearer "+this.token, "Accept":"application/json" } });
+    this.lastUrl = url.toString();
+    console.log("[GHIN] GET", this.lastUrl);
+    let res;
+    try{ res = await fetch(this.lastUrl, { headers:{ "Authorization":"Bearer "+this.token, "Accept":"application/json", "Content-Type":"application/json; charset=utf-8" } }); }
+    catch(e){ this.lastStatus="network/CORS error"; this.lastBody=String(e); ghinDebug(); throw new Error("Network/CORS error reaching GHIN: "+e.message); }
+    const body = await res.text();
+    this.lastStatus=res.status; this.lastBody=body; ghinDebug();
     if(res.status===401){ this.setToken(null); throw new Error("Session expired — log in again."); }
-    if(!res.ok) throw new Error(`Request failed (${res.status}). ${(await ghinErr(res))}`);
-    return res.json();
+    if(!res.ok) throw new Error(`Request failed (${res.status}). ${fmtGhinErr(body)}`);
+    try{ return JSON.parse(body); }catch(e){ throw new Error("GHIN returned a non-JSON response."); }
   },
 
-  /* All active golfers in a club (paginated). Optional last-name filter. */
+  /* All golfers in a club (paginated) — matches the working /golfers.json call:
+     just club_id + source + per_page/page (+ optional last_name filter). */
   async roster(lastName=""){
     const cfg=state.ghin;
     if(!cfg.clubId) throw new Error("No Club ID set — log in (it auto-detects your club) or enter it manually.");
     let page=1, all=[], guard=0;
-    while(guard++ < 50){
+    while(guard++ < 60){
       const j = await this.get("/golfers.json", {
-        // /golfers.json requires global_search present & true; club_id scopes to the club
-        global_search:true, from_ghin:true,
-        club_id:cfg.clubId, association_id:cfg.assocId, status:"Active",
-        last_name:lastName||undefined, per_page:100, page,
-        sorting_criteria:"last_name", order:"asc"
+        club_id:cfg.clubId, per_page:100, page,
+        last_name:lastName||undefined
       });
       const list = j.golfers || j.golfers_complete || j.data || (Array.isArray(j)?j:[]);
       all = all.concat(list);
@@ -954,23 +960,29 @@ const GHIN = {
     return all;
   },
 
-  /* Score history for one golfer (most-recent first), `pages` × 20. */
+  /* Score history for one golfer. GHIN nests these under revision_scores.scores
+     and recent_scores.scores; combine + de-dupe across pages. */
   async scores(golferId, pages){
     pages = pages || state.ghin.pages || 3;
-    let all=[];
+    let all=[]; const seen=new Set();
+    const keyOf=s=> s.id!=null ? "id:"+s.id : `${s.played_at||s.posted_at||""}|${s.adjusted_gross_score??s.score}|${s.course_rating??""}`;
     for(let p=1;p<=pages;p++){
       const j = await this.get(`/golfers/${encodeURIComponent(golferId)}/scores.json`, { per_page:20, page:p });
-      const list = j.scores || j.data || (Array.isArray(j)?j:[]);
-      all = all.concat(list);
-      if(list.length<20) break;
+      const rev = (j.revision_scores && j.revision_scores.scores) || [];
+      const rec = (j.recent_scores && j.recent_scores.scores) || [];
+      let batch = [...rev, ...rec];
+      if(!batch.length) batch = j.scores || j.data || (Array.isArray(j)?j:[]);
+      if(!batch.length) break;
+      for(const s of batch){ const k=keyOf(s); if(!seen.has(k)){ seen.add(k); all.push(s); } }
+      if(rec.length<20 && p>=1 && !(j.scores||j.data)) break; // recent list exhausted
     }
     return all;
   }
 };
 async function safeText(res){ try{ return (await res.text()).slice(0,200); }catch(e){ return ""; } }
-/* Turn a GHIN error response body into a short, human-readable message. */
-async function ghinErr(res){
-  let body=""; try{ body=await res.text(); }catch(e){ return ""; }
+/* Turn a GHIN error response body (string) into a short, human-readable message. */
+function fmtGhinErr(body){
+  if(!body) return "";
   try{
     const j=JSON.parse(body);
     if(typeof j.error==="string") return j.error;
@@ -984,6 +996,12 @@ async function ghinErr(res){
     }
   }catch(e){ /* not JSON */ }
   return body.slice(0,200);
+}
+/* Show the last GHIN request/response on-screen (no DevTools needed). */
+function ghinDebug(){
+  const el=document.querySelector("#ghinDebug"); if(!el) return;
+  const body=(GHIN.lastBody||"").slice(0,1200);
+  el.textContent = `Last request:\n${GHIN.lastUrl||"-"}\n\nStatus: ${GHIN.lastStatus}\n\nResponse (first 1200 chars):\n${body||"(empty)"}`;
 }
 
 /* Players import: detect a players CSV vs rounds CSV; supports combined wide rows */
@@ -1099,6 +1117,9 @@ function renderGhin(){
         </div>
       </div>
       <div id="ghinStatus" style="margin-top:10px"></div>
+      <details style="margin-top:12px"><summary class="muted" style="font-size:12px">Diagnostics (copy this if something fails)</summary>
+        <pre id="ghinDebug" style="background:#f0f3f2;padding:10px;border-radius:8px;overflow:auto;max-height:240px;font-size:11px;white-space:pre-wrap;word-break:break-all">No request yet.</pre>
+      </details>
       <div class="muted" style="margin-top:10px;font-size:11px">Build ${APP_VERSION}</div>
     </div>
 
@@ -1153,6 +1174,7 @@ function wireGhin(){
     const list = await GHIN.roster($("#ghLastName")?$("#ghLastName").value.trim():"");
     let added=0; list.forEach(g=>{ const d=playerFromGhinGolfer(g); if(d.lastName||d.ghin){ upsertPlayer(d); added++; } });
     save(); renderAll();
+    if(list.length && !added) ghinStatus({error:`GHIN returned ${list.length} record(s) but none mapped to players — open Diagnostics and send me the response so I can fix the field names.`});
     return added;
   }
   async function pullScores(){
