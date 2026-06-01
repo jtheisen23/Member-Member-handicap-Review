@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.4";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.5";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -925,7 +925,8 @@ const GHIN = {
     const cfg=state.ghin;
     const url = new URL(cfg.base + path);
     if(params.source===undefined) params.source="GHINcom";
-    Object.entries(params).forEach(([k,v])=>{ if(v!=null&&v!=="") url.searchParams.set(k,v); });
+    Object.entries(params).forEach(([k,v])=>{ if(v!=null&&v!=="") url.searchParams.set(k,String(v)); });
+    console.log("[GHIN] GET", url.toString());
     const res = await fetch(url.toString(), { headers:{ "Authorization":"Bearer "+this.token, "Accept":"application/json" } });
     if(res.status===401){ this.setToken(null); throw new Error("Session expired — log in again."); }
     if(!res.ok) throw new Error(`Request failed (${res.status}). ${(await ghinErr(res))}`);
