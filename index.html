@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.10";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.11";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -317,7 +317,7 @@ const DEFAULT_STATE = () => ({
     appToken:"gNPT5it7vAWZ2/k+7xYU1RK41B8EJfqAuBWfjy9qdrJIBoviYpTcsfOqz4AkJnFYvDt6yZ7HMUMeb+PW7YhP9ytdgGqBMFN4q/8O7FvvFw5ZbSm5edAt5Sv29od1jq2uOWQUufCPesOZti5BLb95sdOCbRv1kXkOED7DoehlqMp15b7HGWbYhGqONtHCv6o2wcyTKpkuCDV6QjC1dNHXABzck46XMaaRXJxT0/en44cICHAFlWKpuhF32cWNhH1jHACtKfyp+nFjcjTrhxRh3Lshp+c/C9bNAYI7arT7rgbE2nX1ZMEP3I1MUKhwCT3GK4CttK5V1bginFNMYPNTSMTbtm2Am6LN1+QuGGSTEGoGU7bdKoavAdicB7VZ7zTMSpzVnNheNGRMBZgS9p2KkFuIe3VolQLD00wReYTutgygDGdc0VxMftc2kxdPAB9trpJW+MsTzLv885yslUoYaKtkI2oWpWNA8qh/qBZaZROGAji9e6NtPetA39ycwOHkKOEqGyhr37HgNmpY4CIuQNACmkpMn9sPr4uIPLEh7ueSIxoU225DCkI6WB0yT3EItsG//Zn8OH52/IMFXcimlq19M2u6t9/dVjtfJhG36mgxVa06HtBGCbv6WMAooZQOkk4eYaGmuYF6cpjndvTLa4pz1QowdGZq+ZdBdc9eeWE=",   // static GHINcom client token required in the login body
     clubId:"52147",       // Geneva Golf Club's GHIN club id (for roster load)
     clubName:"Geneva Golf Club",
-    assocId:"",           // association id (optional, helps search)
+    assocId:"106",        // Geneva's GHIN association id (required for the club roster search)
     pages:3               // pages of scores to pull per golfer (20 per page)
   },
   players: [],
@@ -340,6 +340,7 @@ function migrate(s){
   if(!s.ghin.clubId) s.ghin.clubId=d.ghin.clubId;        // ensure Geneva default
   if(!s.ghin.clubName) s.ghin.clubName=d.ghin.clubName;
   if(!s.ghin.appToken) s.ghin.appToken=d.ghin.appToken;  // ensure app token default
+  if(!s.ghin.assocId) s.ghin.assocId=d.ghin.assocId;     // ensure Geneva association (106)
   s.players=s.players||[]; s.teams=s.teams||[];
   return s;
 }
@@ -844,18 +845,17 @@ function roundsFromGhinJson(j){
   if(Array.isArray(j)) arr=j;
   else if(Array.isArray(j.scores)) arr=j.scores;
   else if(j.golfer && Array.isArray(j.golfer.scores)) arr=j.golfer.scores;
+  else if(j.revision_scores && Array.isArray(j.revision_scores.scores) || j.recent_scores && Array.isArray(j.recent_scores.scores))
+    arr=[...((j.revision_scores&&j.revision_scores.scores)||[]), ...((j.recent_scores&&j.recent_scores.scores)||[])];
   else if(Array.isArray(j.revision_scores)) arr=j.revision_scores;
   else if(Array.isArray(j.data)) arr=j.data;
   else arr=[j];
   return arr.map(s=>{
     const holes = num(s.number_of_holes ?? s.holes) || 18;
-    // Prefer a stored differential. For 9-hole rounds GHIN supplies an
-    // 18-hole-equivalent in adjusted_scaled_up_differential — use it so we
-    // don't double a value that's already scaled.
-    let diff = s.differential!=null ? num(s.differential)
-             : (s.score_differential!=null ? num(s.score_differential) : null);
-    if(holes===9 && s.adjusted_scaled_up_differential!=null)
-      diff = num(s.adjusted_scaled_up_differential);
+    // GHIN's adjusted_scaled_up_differential is the 18-hole-equivalent it uses for
+    // handicap math — prefer it (matches the working app's field priority) so 9-hole
+    // rounds aren't doubled later.
+    let diff = num(s.adjusted_scaled_up_differential ?? s.scaled_up_differential ?? s.differential ?? s.score_differential);
     return {
       date: (s.played_at||s.posted_at||s.adjusted_played_at||s.date||"").slice(0,10),
       score: num(s.adjusted_gross_score ?? s.gross_score ?? s.score),
@@ -941,42 +941,25 @@ const GHIN = {
     try{ return JSON.parse(body); }catch(e){ throw new Error("GHIN returned a non-JSON response."); }
   },
 
-  /* Club roster. /golfers.json requires global_search=true + a `search` term and
-     scopes by club_id. To pull the whole club we search each last-name initial
-     A–Z (or a single term if a filter is given) and de-dupe by golfer id. */
+  /* Full club roster — confirmed working call:
+     GET /golfers/search.json?club_id&association_id&status=Active&per_page=100&page=N
+     (association_id is required; returns data.golfers; paginate until <100). */
   async roster(lastName=""){
     const cfg=state.ghin;
     if(!cfg.clubId) throw new Error("No Club ID set — log in (it auto-detects your club) or enter it manually.");
-    const terms = lastName ? [lastName] : "abcdefghijklmnopqrstuvwxyz".split("");
-    const byId = new Map();
-    let ti=0;
-    for(const term of terms){
-      ti++;
-      if(terms.length>1 && typeof ghinStatus==="function")
-        ghinStatus({busy:`Loading roster… searching “${term.toUpperCase()}” (${ti}/${terms.length}) — ${byId.size} members so far`});
-      let page=1;
-      while(page<=10){
-        let j;
-        try{
-          j = await this.get("/golfers.json", {
-            global_search:true, search:term, club_id:cfg.clubId, status:"Active",
-            per_page:100, page
-          });
-        }catch(e){
-          // If the very first request fails, surface it instead of firing 26 bad calls.
-          if(ti===1 && page===1 && byId.size===0) throw e;
-          break;
-        }
-        const list = j.golfers || j.golfers_complete || j.data || (Array.isArray(j)?j:[]);
-        list.forEach(g=>{
-          const cid=String(g.club_id||(g.club&&g.club.id)||"");
-          if(!cid || cid===String(cfg.clubId)) byId.set(String(g.id||g.ghin||g.golfer_id), g); // keep this club only
-        });
-        if(list.length<100) break;
-        page++;
-      }
+    if(!cfg.assocId) throw new Error("No Association ID set (Geneva = 106). Add it in Connection settings.");
+    let page=1, all=[], guard=0;
+    while(guard++ < 60){
+      const j = await this.get("/golfers/search.json", {
+        club_id:cfg.clubId, association_id:cfg.assocId, status:"Active",
+        last_name:lastName||undefined, per_page:100, page
+      });
+      const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
+      all = all.concat(list);
+      if(list.length<100) break;
+      page++;
     }
-    return [...byId.values()];
+    return all;
   },
 
   /* Score history for one golfer. GHIN nests these under revision_scores.scores
