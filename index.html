@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.3";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.4";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -903,7 +903,7 @@ const GHIN = {
       headers:{ "Content-Type":"application/json", "Accept":"application/json" },
       body: JSON.stringify({ user:{ email_or_ghin:emailOrGhin, password, remember_me:true, source:"GHINcom" }, token: cfg.appToken })
     });
-    if(!res.ok) throw new Error(`Login failed (${res.status}). ${(await safeText(res))}`);
+    if(!res.ok) throw new Error(`Login failed (${res.status}). ${(await ghinErr(res))}`);
     const data = await res.json();
     const gu = data.golfer_user || data.user || data;
     const tok = gu.golfer_user_token || gu.token || data.token || data.golfer_user_token;
@@ -928,7 +928,7 @@ const GHIN = {
     Object.entries(params).forEach(([k,v])=>{ if(v!=null&&v!=="") url.searchParams.set(k,v); });
     const res = await fetch(url.toString(), { headers:{ "Authorization":"Bearer "+this.token, "Accept":"application/json" } });
     if(res.status===401){ this.setToken(null); throw new Error("Session expired — log in again."); }
-    if(!res.ok) throw new Error(`Request failed (${res.status}). ${(await safeText(res))}`);
+    if(!res.ok) throw new Error(`Request failed (${res.status}). ${(await ghinErr(res))}`);
     return res.json();
   },
 
@@ -938,10 +938,11 @@ const GHIN = {
     if(!cfg.clubId) throw new Error("No Club ID set — log in (it auto-detects your club) or enter it manually.");
     let page=1, all=[], guard=0;
     while(guard++ < 50){
-      const j = await this.get("/golfers.json", {
+      const j = await this.get("/golfers/search.json", {
+        global_search:false,                 // scoped to the club, not all of GHIN
         club_id:cfg.clubId, association_id:cfg.assocId, status:"Active",
         last_name:lastName||undefined, per_page:100, page,
-        sorting_criteria:"last_name", order:"ASC"
+        sorting_criteria:"last_name", order:"asc"
       });
       const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
       all = all.concat(list);
@@ -965,6 +966,23 @@ const GHIN = {
   }
 };
 async function safeText(res){ try{ return (await res.text()).slice(0,200); }catch(e){ return ""; } }
+/* Turn a GHIN error response body into a short, human-readable message. */
+async function ghinErr(res){
+  let body=""; try{ body=await res.text(); }catch(e){ return ""; }
+  try{
+    const j=JSON.parse(body);
+    if(typeof j.error==="string") return j.error;
+    if(j.errors){
+      const first=Object.values(j.errors)[0];
+      if(Array.isArray(first)&&first.length){ const f=first[0];
+        if(f&&typeof f==="object") return [f.top_line,f.body_line1].filter(Boolean).join(" — ")||JSON.stringify(f);
+        return String(f);
+      }
+      return JSON.stringify(j.errors);
+    }
+  }catch(e){ /* not JSON */ }
+  return body.slice(0,200);
+}
 
 /* Players import: detect a players CSV vs rounds CSV; supports combined wide rows */
 function importPlayersBlob(txt){
