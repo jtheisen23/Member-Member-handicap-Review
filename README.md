@@ -37,17 +37,13 @@ anywhere. Export a JSON backup to save or share.
 
 ### Pull the whole Geneva roster live from GHIN (recommended)
 The app talks to GHIN's `api2.ghin.com` mobile API **directly from the browser** — GHIN
-currently serves permissive CORS headers, so no proxy is needed. In **Import… → section 3**:
+currently serves permissive CORS headers, so no proxy is needed. The app token and Geneva club
+id (`52147`) are preconfigured. On the **⛳ Pull from GHIN** tab:
 
-1. Open **GHIN connection settings** and paste the **GHINcom app token** — the long static token
-   the GHIN web client ships (the same value the existing club app uses). Required by GHIN's
-   login; entered once and saved locally.
-2. Enter **your own** GHIN email/number + password → **Log in to GHIN**. Your club is
-   auto-detected; the Club ID pre-fills to **Geneva Golf Club (`52147`)**.
-3. **Load Geneva roster** — every active member is imported (name, GHIN #, index). Optional
-   last-name filter to narrow it.
-4. **Pull scores for all members** — fetches each member's recent score history (choose how many
-   pages of 20 in settings).
+1. Enter **your own** GHIN email/number + password → **Log in to GHIN**.
+2. Click **⤓ Pull everyone (roster + scores)** — loads every active Geneva member (name, GHIN #,
+   index) and fetches each one's score history in a single step. (Or use the step-by-step buttons,
+   with an optional last-name filter.)
 
 Your password is never stored; only a short-lived session token is kept for the current tab.
 Plus-handicaps (`"+2.7"` → −2.7) and 9-hole scaled differentials are handled automatically.

@@ -109,8 +109,9 @@
   </div>
   <div class="spacer"></div>
   <div class="toolbar">
+    <button class="ghost" id="btnPullGhin">⛳ Pull from GHIN</button>
     <button class="ghost" id="btnSample">Load sample data</button>
-    <button class="ghost" id="btnImport">Import…</button>
+    <button class="ghost" id="btnImport">Import (files)…</button>
     <button class="ghost" id="btnExport">Export backup</button>
     <button class="ghost danger" id="btnClear">Clear all</button>
   </div>
@@ -118,6 +119,7 @@
 
 <nav class="tabs" id="tabs">
   <button data-view="players" class="active">Players</button>
+  <button data-view="ghin">⛳ Pull from GHIN</button>
   <button data-view="anomalies">Anomaly Review</button>
   <button data-view="teams">Team Builder</button>
   <button data-view="settings">Course &amp; Rules</button>
@@ -167,6 +169,9 @@
       </div>
     </div>
   </section>
+
+  <!-- ============ PULL FROM GHIN ============ -->
+  <section class="view" id="view-ghin"></section>
 
   <!-- ============ ANOMALIES ============ -->
   <section class="view" id="view-anomalies">
@@ -503,7 +508,7 @@ function renderPlayers(){
       <td><button class="small" data-edit="${r.p.id}">Edit</button></td>
     </tr>`;
   }).join("");
-  $("#playersBody").innerHTML = body || `<tr><td colspan="12" class="muted" style="padding:24px;text-align:center">No players yet. Use <b>Load sample data</b> or <b>+ Add player</b>.</td></tr>`;
+  $("#playersBody").innerHTML = body || `<tr><td colspan="12" class="muted" style="padding:24px;text-align:center">No players yet. Use <b>⛳ Pull from GHIN</b> to load the Geneva roster, or <b>Load sample data</b> to explore.</td></tr>`;
 }
 
 /* tiny SVG sparkline of differentials, oldest->newest (lower=better) */
@@ -1012,7 +1017,8 @@ function upsertPlayer(data){
 
 function openImport(){
   $("#importBody").innerHTML = `
-    <div class="info"><b>Three ways to load data.</b> Everything stays in your browser.</div>
+    <div class="info">To pull members and scores straight from GHIN, use the <b>⛳ Pull from GHIN</b> tab.
+      This dialog is for loading from files or pasted text. Everything stays in your browser.</div>
     <h3>1 · Players (and optionally rounds) — CSV or JSON</h3>
     <p class="help">Player columns: <code>firstName,lastName,ghin,index,gender</code>. To load rounds in the same file,
       add <code>date,score,rating,slope,tees,holes,type</code> columns (one row per round). Or paste a GHIN golfer-search JSON.</p>
@@ -1029,44 +1035,7 @@ function openImport(){
     </div>
     <textarea id="impRounds" placeholder='Paste GHIN scores JSON or CSV rows…' style="margin-top:6px"></textarea>
     <button class="primary small" id="impRoundsBtn" style="margin-top:6px">Add rounds to player</button>
-    <div id="impResult"></div>
-    <hr style="margin:16px 0;border:none;border-top:1px solid var(--line)">
-    <h3>3 · Pull Geneva Golf Club members live from GHIN ⛳</h3>
-    <p class="help">Log in with your own GHIN account. The app detects your club, loads the <b>Geneva Golf Club roster</b>,
-      and can pull every member's score history — all in your browser. Credentials are never stored; the login token is
-      kept only for this tab.</p>
-    <div class="info" id="ghinLoginState"></div>
-
-    <details id="ghinSettings"><summary>GHIN connection settings</summary>
-      <div class="row" style="margin-top:8px">
-        <div class="field" style="flex:1;min-width:280px"><label>GHINcom app token (required) <span class="muted">— the long static token from the GHIN web client</span></label>
-          <input id="ghAppToken" type="password" value="${esc(state.ghin.appToken||"")}" placeholder="paste the static app token"></div>
-      </div>
-      <div class="row">
-        <div class="field"><label>Club ID (auto-fills on login)</label><input id="ghClub" value="${esc(state.ghin.clubId||"")}" style="width:120px"></div>
-        <div class="field"><label>Association ID</label><input id="ghAssoc" value="${esc(state.ghin.assocId||"")}" style="width:120px"></div>
-        <div class="field"><label>Score pages / golfer (×20)</label><input id="ghPages" type="number" min="1" max="20" value="${state.ghin.pages||3}" style="width:80px"></div>
-        <div class="field" style="flex:1;min-width:220px"><label>API base</label><input id="ghBase" value="${esc(state.ghin.base)}"></div>
-      </div>
-    </details>
-
-    <div class="row" style="margin-top:10px">
-      <div class="field"><label>Email or GHIN #</label><input id="ghEmail" placeholder="you@example.com" autocomplete="username"></div>
-      <div class="field"><label>Password</label><input id="ghPass" type="password" autocomplete="current-password"></div>
-      <button class="primary" id="ghLoginBtn">Log in to GHIN</button>
-      <button id="ghLogoutBtn" style="display:none">Log out</button>
-    </div>
-
-    <div id="ghActions" style="display:none;margin-top:12px">
-      <div class="row">
-        <div class="field"><label>Filter by last name (optional)</label><input id="ghLastName" placeholder="leave blank for all"></div>
-        <button class="primary" id="ghRosterBtn">Load Geneva roster</button>
-        <button id="ghScoresBtn">Pull scores for all members</button>
-      </div>
-      <div class="legend"><span class="muted">Tip: load the roster first, then pull scores. Pulling all scores makes one
-        request per member, so it can take a minute for a big roster.</span></div>
-    </div>
-    <div id="ghinStatus"></div>`;
+    <div id="impResult"></div>`;
 
   $("#impFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{$("#impPlayers").value=rd.result;}; rd.readAsText(f); };
   $("#impPlayersBtn").onclick=()=>{ const res=importPlayersBlob($("#impPlayers").value); showImpResult(res); renderAll(); };
@@ -1077,8 +1046,59 @@ function openImport(){
     if(!rounds.length){ showImpResult({error:"No rounds parsed."}); return; }
     p.rounds=(p.rounds||[]).concat(rounds); save(); showImpResult({msg:`Added ${rounds.length} round(s) to ${playerName(pid)}.`}); renderAll();
   };
+  $("#importDialog").showModal();
+}
 
-  // ---- GHIN settings persistence ----
+/* =========================== RENDER: PULL FROM GHIN =========================== */
+function renderGhin(){
+  const c=state.ghin;
+  $("#view-ghin").innerHTML = `
+    <div class="card">
+      <h2>⛳ Pull from GHIN — Geneva Golf Club</h2>
+      <p class="help">Log in with your own GHIN account. The app loads the <b>Geneva Golf Club roster</b> (club #${esc(c.clubId)})
+        and pulls every member's score history — directly from GHIN, in your browser. Your password is never stored.</p>
+      <div class="info" id="ghinLoginState"></div>
+
+      <div class="row" style="margin-top:10px">
+        <div class="field"><label>Email or GHIN #</label><input id="ghEmail" placeholder="you@example.com" autocomplete="username"></div>
+        <div class="field"><label>Password</label><input id="ghPass" type="password" autocomplete="current-password"></div>
+        <button class="primary" id="ghLoginBtn">Log in to GHIN</button>
+        <button id="ghLogoutBtn" style="display:none">Log out</button>
+      </div>
+
+      <div id="ghActions" style="display:none;margin-top:14px">
+        <button class="primary" id="ghPullAllBtn" style="font-size:15px;padding:10px 16px">⤓ Pull everyone (roster + scores)</button>
+        <div class="legend" style="margin:8px 0 14px"><span class="muted">One click: loads the full roster, then fetches each
+          member's scores. Takes ~a minute for a big roster.</span></div>
+        <h3>Or do it in steps</h3>
+        <div class="row">
+          <div class="field"><label>Filter by last name (optional)</label><input id="ghLastName" placeholder="leave blank for all"></div>
+          <button id="ghRosterBtn">Load roster only</button>
+          <button id="ghScoresBtn">Pull scores for loaded members</button>
+        </div>
+      </div>
+      <div id="ghinStatus" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <details id="ghinSettings"><summary>Connection settings (advanced)</summary>
+        <p class="help">Preconfigured for Geneva. Only change these if GHIN rotates the token or you need a different club.</p>
+        <div class="row" style="margin-top:8px">
+          <div class="field" style="flex:1;min-width:280px"><label>GHINcom app token</label>
+            <input id="ghAppToken" type="password" value="${esc(c.appToken||"")}" placeholder="static app token"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Club ID</label><input id="ghClub" value="${esc(c.clubId||"")}" style="width:120px"></div>
+          <div class="field"><label>Association ID</label><input id="ghAssoc" value="${esc(c.assocId||"")}" style="width:120px"></div>
+          <div class="field"><label>Score pages / golfer (×20)</label><input id="ghPages" type="number" min="1" max="20" value="${c.pages||3}" style="width:80px"></div>
+          <div class="field" style="flex:1;min-width:220px"><label>API base</label><input id="ghBase" value="${esc(c.base)}"></div>
+        </div>
+      </details>
+    </div>`;
+  wireGhin();
+}
+
+function wireGhin(){
   const saveGhinCfg=()=>{ const c=state.ghin;
     c.appToken=$("#ghAppToken").value.trim(); c.clubId=$("#ghClub").value.trim();
     c.assocId=$("#ghAssoc").value.trim(); c.pages=Math.max(1,num($("#ghPages").value)||3);
@@ -1093,51 +1113,52 @@ function openImport(){
     const who = GHIN.me ? `${esc((GHIN.me.first_name||"")+" "+(GHIN.me.last_name||"")).trim()||"member"}` : "";
     $("#ghLoginState").innerHTML = inn
       ? `✅ Logged in${who?" as <b>"+who+"</b>":""}. Club: <b>${esc(state.ghin.clubName||"(detected on next call)")}</b>${state.ghin.clubId?` <span class="muted">#${esc(state.ghin.clubId)}</span>`:""}.`
-      : `Not logged in. Enter the app token (settings above) and your GHIN credentials.`;
+      : `Not logged in. Enter your GHIN email/number and password below.`;
   };
   refreshGhinUi();
 
-  $("#ghLoginBtn").onclick=async()=>{
+  async function doLogin(){
     saveGhinCfg();
     const em=$("#ghEmail").value.trim(), pw=$("#ghPass").value;
-    if(!em||!pw){ ghinStatus({error:"Enter your email/GHIN and password."}); return; }
+    if(!em||!pw){ ghinStatus({error:"Enter your email/GHIN and password."}); return false; }
     ghinStatus({busy:"Logging in…"});
-    try{ await GHIN.login(em,pw); $("#ghPass").value=""; ghinStatus({msg:"Logged in. Now load the Geneva roster."});
-      // reflect auto-detected club id
-      $("#ghClub").value=state.ghin.clubId||""; $("#ghAssoc").value=state.ghin.assocId||""; refreshGhinUi(); }
-    catch(e){ ghinStatus({error:e.message}); }
-  };
-  $("#ghLogoutBtn").onclick=()=>{ GHIN.setToken(null); GHIN.me=null; refreshGhinUi(); ghinStatus({msg:"Logged out."}); };
-
-  $("#ghRosterBtn").onclick=async()=>{
-    saveGhinCfg();
+    try{ await GHIN.login(em,pw); $("#ghPass").value="";
+      $("#ghClub").value=state.ghin.clubId||""; $("#ghAssoc").value=state.ghin.assocId||""; refreshGhinUi(); return true; }
+    catch(e){ ghinStatus({error:e.message}); return false; }
+  }
+  async function loadRoster(){
     ghinStatus({busy:"Loading Geneva roster…"});
-    try{
-      const list = await GHIN.roster($("#ghLastName").value.trim());
-      let added=0; list.forEach(g=>{ const d=playerFromGhinGolfer(g); if(d.lastName||d.ghin){ upsertPlayer(d); added++; } });
-      save(); renderAll();
-      ghinStatus({msg:`Loaded ${added} member(s) from the club roster. Now "Pull scores for all members".`});
-    }catch(e){ ghinStatus({error:e.message}); }
-  };
-
-  $("#ghScoresBtn").onclick=async()=>{
-    saveGhinCfg();
+    const list = await GHIN.roster($("#ghLastName")?$("#ghLastName").value.trim():"");
+    let added=0; list.forEach(g=>{ const d=playerFromGhinGolfer(g); if(d.lastName||d.ghin){ upsertPlayer(d); added++; } });
+    save(); renderAll();
+    return added;
+  }
+  async function pullScores(){
     const targets = state.players.filter(p=>p.ghinId||p.ghin);
-    if(!targets.length){ ghinStatus({error:"No members with a GHIN id yet — load the roster first."}); return; }
+    if(!targets.length){ ghinStatus({error:"No members with a GHIN id yet — load the roster first."}); return {ok:0,fail:0}; }
     let done=0, ok=0, fail=0;
     for(const p of targets){
       ghinStatus({busy:`Pulling scores… ${++done}/${targets.length} (${esc(playerName(p.id))})`});
-      try{
-        const raw = await GHIN.scores(p.ghinId||p.ghin);
-        p.rounds = roundsFromGhinJson(raw);
-        ok++; save(); renderPlayers();
-      }catch(e){ fail++; }
+      try{ p.rounds = roundsFromGhinJson(await GHIN.scores(p.ghinId||p.ghin)); ok++; save(); renderPlayers(); }
+      catch(e){ fail++; console.warn("scores failed for",playerName(p.id),e); }
     }
     renderAll();
-    ghinStatus({msg:`Done. Pulled scores for ${ok} member(s)${fail?`, ${fail} failed (see console)`:""}.`});
-  };
+    return {ok,fail};
+  }
 
-  $("#importDialog").showModal();
+  $("#ghLoginBtn").onclick=async()=>{ if(await doLogin()) ghinStatus({msg:'Logged in. Click "Pull everyone" to load the roster and scores.'}); };
+  $("#ghLogoutBtn").onclick=()=>{ GHIN.setToken(null); GHIN.me=null; refreshGhinUi(); ghinStatus({msg:"Logged out."}); };
+  $("#ghRosterBtn").onclick=async()=>{ saveGhinCfg(); try{ const n=await loadRoster(); ghinStatus({msg:`Loaded ${n} member(s). Now pull scores.`}); }catch(e){ ghinStatus({error:e.message}); } };
+  $("#ghScoresBtn").onclick=async()=>{ saveGhinCfg(); try{ const r=await pullScores(); if(r.ok||r.fail) ghinStatus({msg:`Pulled scores for ${r.ok} member(s)${r.fail?`, ${r.fail} failed (see console)`:""}.`}); }catch(e){ ghinStatus({error:e.message}); } };
+  $("#ghPullAllBtn").onclick=async()=>{
+    saveGhinCfg();
+    try{
+      const n=await loadRoster();
+      ghinStatus({busy:`Loaded ${n} members. Pulling scores…`});
+      const r=await pullScores();
+      ghinStatus({msg:`✅ Done — ${n} members loaded, scores pulled for ${r.ok}${r.fail?` (${r.fail} failed)`:""}. See the Players tab.`});
+    }catch(e){ ghinStatus({error:e.message}); }
+  };
 }
 function ghinStatus(res){
   const el=$("#ghinStatus"); if(!el) return;
@@ -1205,6 +1226,7 @@ function loadSample(){
 function switchView(v){
   $$("nav.tabs button").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
   $$(".view").forEach(s=>s.classList.toggle("active",s.id==="view-"+v));
+  if(v==="ghin") renderGhin();
   if(v==="anomalies") renderAnomalies();
   if(v==="teams") renderTeams();
   if(v==="settings") renderSettings();
@@ -1216,6 +1238,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   // tabs
   $("#tabs").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b) switchView(b.dataset.view); });
   // header buttons
+  $("#btnPullGhin").onclick=()=>switchView("ghin");
   $("#btnSample").onclick=loadSample;
   $("#btnImport").onclick=openImport;
   $("#btnExport").onclick=exportBackup;
