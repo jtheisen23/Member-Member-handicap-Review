@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.9";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.10";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -941,27 +941,42 @@ const GHIN = {
     try{ return JSON.parse(body); }catch(e){ throw new Error("GHIN returned a non-JSON response."); }
   },
 
-  /* All golfers in a club (paginated) — matches the working /golfers.json call:
-     just club_id + source + per_page/page (+ optional last_name filter). */
+  /* Club roster. /golfers.json requires global_search=true + a `search` term and
+     scopes by club_id. To pull the whole club we search each last-name initial
+     A–Z (or a single term if a filter is given) and de-dupe by golfer id. */
   async roster(lastName=""){
     const cfg=state.ghin;
     if(!cfg.clubId) throw new Error("No Club ID set — log in (it auto-detects your club) or enter it manually.");
-    let page=1, all=[], guard=0;
-    while(guard++ < 60){
-      const j = await this.get("/golfers.json", {
-        // global_search must be PRESENT; =true means a global name search (needs `search`),
-        // =false scopes to the club via club_id — that's the roster path.
-        global_search:false,
-        club_id:cfg.clubId, status:"Active",
-        last_name:lastName||undefined,
-        per_page:100, page
-      });
-      const list = j.golfers || j.golfers_complete || j.data || (Array.isArray(j)?j:[]);
-      all = all.concat(list);
-      if(list.length<100) break;
-      page++;
+    const terms = lastName ? [lastName] : "abcdefghijklmnopqrstuvwxyz".split("");
+    const byId = new Map();
+    let ti=0;
+    for(const term of terms){
+      ti++;
+      if(terms.length>1 && typeof ghinStatus==="function")
+        ghinStatus({busy:`Loading roster… searching “${term.toUpperCase()}” (${ti}/${terms.length}) — ${byId.size} members so far`});
+      let page=1;
+      while(page<=10){
+        let j;
+        try{
+          j = await this.get("/golfers.json", {
+            global_search:true, search:term, club_id:cfg.clubId, status:"Active",
+            per_page:100, page
+          });
+        }catch(e){
+          // If the very first request fails, surface it instead of firing 26 bad calls.
+          if(ti===1 && page===1 && byId.size===0) throw e;
+          break;
+        }
+        const list = j.golfers || j.golfers_complete || j.data || (Array.isArray(j)?j:[]);
+        list.forEach(g=>{
+          const cid=String(g.club_id||(g.club&&g.club.id)||"");
+          if(!cid || cid===String(cfg.clubId)) byId.set(String(g.id||g.ghin||g.golfer_id), g); // keep this club only
+        });
+        if(list.length<100) break;
+        page++;
+      }
     }
-    return all;
+    return [...byId.values()];
   },
 
   /* Score history for one golfer. GHIN nests these under revision_scores.scores
