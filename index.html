@@ -306,6 +306,14 @@ const DEFAULT_STATE = () => ({
     inflating:3.0,      // recent diffs worse than older by this => possible inflation
     potentialGap:3.0    // index minus low differential gap => sandbag potential
   },
+  ghin: {            // GHIN API integration (see Import dialog / Help)
+    base:"https://api2.ghin.com/api/v1",
+    appToken:"",          // static GHINcom client token required in the login body
+    clubId:"52147",       // Geneva Golf Club's GHIN club id (for roster load)
+    clubName:"Geneva Golf Club",
+    assocId:"",           // association id (optional, helps search)
+    pages:3               // pages of scores to pull per golfer (20 per page)
+  },
   players: [],
   teams: []   // array of [playerIdOrNull, playerIdOrNull]
 });
@@ -322,6 +330,9 @@ function load(){
 function migrate(s){
   const d = DEFAULT_STATE();
   s.tees = s.tees||d.tees; s.rules=s.rules||d.rules; s.thresholds={...d.thresholds,...(s.thresholds||{})};
+  s.ghin={...d.ghin,...(s.ghin||{})};
+  if(!s.ghin.clubId) s.ghin.clubId=d.ghin.clubId;        // ensure Geneva default
+  if(!s.ghin.clubName) s.ghin.clubName=d.ghin.clubName;
   s.players=s.players||[]; s.teams=s.teams||[];
   return s;
 }
@@ -332,6 +343,16 @@ const $ = sel => document.querySelector(sel);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const uid = () => Math.random().toString(36).slice(2,10);
 const num = v => { const n = parseFloat(v); return isNaN(n)?null:n; };
+/* Handicap index parser: GHIN returns plus handicaps as "+2.7" (= -2.7) and
+   non-numeric values like "NH"/"WD" for golfers without an established index. */
+const parseIndex = v => {
+  if(v==null||v==="") return null;
+  if(typeof v==="number") return v;
+  const s=String(v).trim().toUpperCase();
+  if(s==="NH"||s==="WD"||s==="N/A") return null;
+  if(s[0]==="+") { const n=parseFloat(s.slice(1)); return isNaN(n)?null:-n; }
+  const n=parseFloat(s); return isNaN(n)?null:n;
+};
 const fmt = (v,d=1) => v===null||v===undefined||isNaN(v) ? "—" : Number(v).toFixed(d);
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
 function daysSince(dateStr){ const t=Date.parse(dateStr); if(isNaN(t)) return null; return Math.floor((Date.now()-t)/86400000); }
@@ -819,19 +840,125 @@ function roundsFromGhinJson(j){
   else if(Array.isArray(j.revision_scores)) arr=j.revision_scores;
   else if(Array.isArray(j.data)) arr=j.data;
   else arr=[j];
-  const g=v=>v;
-  return arr.map(s=>({
-    date: (s.played_at||s.posted_at||s.adjusted_played_at||s.date||"").slice(0,10),
-    score: num(s.adjusted_gross_score ?? s.gross_score ?? s.score),
-    rating: num(s.course_rating ?? s.rating),
-    slope: num(s.slope_rating ?? s.slope),
-    tees: (s.tee_name||s.tee_set_side||s.teeset_ratings_name||s.tees||"").toString(),
-    holes: num(s.number_of_holes ?? s.holes) || 18,
-    type: (s.score_type_display_full || s.score_type || s.type || "").toString().charAt(0).toUpperCase(),
-    differential: s.differential!=null ? num(s.differential) : (s.score_differential!=null?num(s.score_differential):null),
-    course: (s.course_name||s.facility_name||s.course||"").toString()
-  })).filter(r=>r.date||r.score);
+  return arr.map(s=>{
+    const holes = num(s.number_of_holes ?? s.holes) || 18;
+    // Prefer a stored differential. For 9-hole rounds GHIN supplies an
+    // 18-hole-equivalent in adjusted_scaled_up_differential — use it so we
+    // don't double a value that's already scaled.
+    let diff = s.differential!=null ? num(s.differential)
+             : (s.score_differential!=null ? num(s.score_differential) : null);
+    if(holes===9 && s.adjusted_scaled_up_differential!=null)
+      diff = num(s.adjusted_scaled_up_differential);
+    return {
+      date: (s.played_at||s.posted_at||s.adjusted_played_at||s.date||"").slice(0,10),
+      score: num(s.adjusted_gross_score ?? s.gross_score ?? s.score),
+      rating: num(s.course_rating ?? s.rating),
+      slope: num(s.slope_rating ?? s.slope),
+      tees: (s.tee_name||s.tee_set_side||s.teeset_ratings_name||s.tees||"").toString(),
+      holes,
+      type: (s.score_type_display_full || s.score_type || s.type || "").toString().charAt(0).toUpperCase(),
+      differential: diff,
+      // mark 9-hole rounds whose differential is already an 18-equiv so the
+      // metric layer doesn't double it again
+      scaled: holes===9 && s.adjusted_scaled_up_differential!=null,
+      course: (s.course_name||s.facility_name||s.course||"").toString()
+    };
+  }).filter(r=>r.date||r.score);
 }
+/* Map a GHIN golfer record (search/roster result) into our player model. */
+function playerFromGhinGolfer(g){
+  const club = g.club || {};
+  return {
+    firstName: (g.first_name||g.player_name_first||"").trim(),
+    lastName:  (g.last_name||g.player_name_last||"").trim(),
+    ghin:      String(g.ghin || g.ghin_number || g.golfer_id || ""),
+    ghinId:    g.id || g.golfer_id || g.ghin || null,   // internal id used by /golfers/{id}/scores
+    index:     parseIndex(g.handicap_index ?? g.hi_value ?? g.hi_display ?? g.display_value ?? g.handicap),
+    gender:    g.gender || (club.gender) || "M",
+    clubName:  g.club_name || club.club_name || ""
+  };
+}
+
+/* ============================ GHIN API CLIENT ============================
+   GHIN currently serves permissive CORS headers, so the browser can call the
+   api2.ghin.com mobile API directly. Credentials are never stored; the session
+   token lives in sessionStorage and is cleared when the tab closes. */
+const GHIN = {
+  token: (typeof sessionStorage!=="undefined" && sessionStorage.getItem("mmhr_ghin_token")) || null,
+  me: null,
+  setToken(t){ this.token=t; try{ t?sessionStorage.setItem("mmhr_ghin_token",t):sessionStorage.removeItem("mmhr_ghin_token"); }catch(e){} },
+
+  async login(emailOrGhin, password){
+    const cfg=state.ghin;
+    if(!cfg.appToken) throw new Error("Missing GHINcom app token (paste it in the GHIN settings field first).");
+    const res = await fetch(cfg.base + "/golfer_login.json", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Accept":"application/json" },
+      body: JSON.stringify({ user:{ email_or_ghin:emailOrGhin, password, remember_me:true, source:"GHINcom" }, token: cfg.appToken })
+    });
+    if(!res.ok) throw new Error(`Login failed (${res.status}). ${(await safeText(res))}`);
+    const data = await res.json();
+    const gu = data.golfer_user || data.user || data;
+    const tok = gu.golfer_user_token || gu.token || data.token || data.golfer_user_token;
+    if(!tok) throw new Error("Logged in but no token found in the response.");
+    this.setToken(tok); this.me=gu;
+    // Auto-detect the member's club so we can scope everything to Geneva.
+    const clubId = gu.club_id || gu.default_club_id || (gu.clubs&&gu.clubs[0]&&gu.clubs[0].id);
+    const clubName = gu.club_name || (gu.clubs&&gu.clubs[0]&&gu.clubs[0].club_name) || "";
+    const assoc = gu.association_id || gu.assoc_id || (gu.associations&&gu.associations[0]&&gu.associations[0].id);
+    if(clubId && !cfg.clubId){ cfg.clubId=String(clubId); }
+    if(clubName){ cfg.clubName=clubName; }
+    if(assoc && !cfg.assocId){ cfg.assocId=String(assoc); }
+    save();
+    return gu;
+  },
+
+  async get(path, params={}){
+    if(!this.token) throw new Error("Not logged in.");
+    const cfg=state.ghin;
+    const url = new URL(cfg.base + path);
+    if(params.source===undefined) params.source="GHINcom";
+    Object.entries(params).forEach(([k,v])=>{ if(v!=null&&v!=="") url.searchParams.set(k,v); });
+    const res = await fetch(url.toString(), { headers:{ "Authorization":"Bearer "+this.token, "Accept":"application/json" } });
+    if(res.status===401){ this.setToken(null); throw new Error("Session expired — log in again."); }
+    if(!res.ok) throw new Error(`Request failed (${res.status}). ${(await safeText(res))}`);
+    return res.json();
+  },
+
+  /* All active golfers in a club (paginated). Optional last-name filter. */
+  async roster(lastName=""){
+    const cfg=state.ghin;
+    if(!cfg.clubId) throw new Error("No Club ID set — log in (it auto-detects your club) or enter it manually.");
+    let page=1, all=[], guard=0;
+    while(guard++ < 50){
+      const j = await this.get("/golfers.json", {
+        club_id:cfg.clubId, association_id:cfg.assocId, status:"Active",
+        last_name:lastName||undefined, per_page:100, page,
+        sorting_criteria:"last_name", order:"ASC"
+      });
+      const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
+      all = all.concat(list);
+      if(list.length<100) break;
+      page++;
+    }
+    return all;
+  },
+
+  /* Score history for one golfer (most-recent first), `pages` × 20. */
+  async scores(golferId, pages){
+    pages = pages || state.ghin.pages || 3;
+    let all=[];
+    for(let p=1;p<=pages;p++){
+      const j = await this.get(`/golfers/${encodeURIComponent(golferId)}/scores.json`, { per_page:20, page:p });
+      const list = j.scores || j.data || (Array.isArray(j)?j:[]);
+      all = all.concat(list);
+      if(list.length<20) break;
+    }
+    return all;
+  }
+};
+async function safeText(res){ try{ return (await res.text()).slice(0,200); }catch(e){ return ""; } }
+
 /* Players import: detect a players CSV vs rounds CSV; supports combined wide rows */
 function importPlayersBlob(txt){
   txt=txt.trim();
@@ -843,11 +970,7 @@ function importPlayersBlob(txt){
       // golfer search result?
       const list = Array.isArray(j)?j : (j.golfers||j.players||j.data||[]);
       let added=0;
-      list.forEach(g=>{ upsertPlayer({
-        firstName:g.first_name||g.firstName||"", lastName:g.last_name||g.lastName||"",
-        ghin:String(g.ghin||g.ghin_number||g.id||""), index:num(g.handicap_index??g.hi??g.index),
-        gender:g.gender||"M"
-      }); added++; });
+      list.forEach(g=>{ upsertPlayer(playerFromGhinGolfer(g)); added++; });
       save(); return {players:added, msg:`Imported ${added} player(s) from JSON.`};
     }catch(e){ return {error:"Invalid JSON: "+e.message}; }
   }
@@ -862,9 +985,8 @@ function importPlayersBlob(txt){
     const fn=o.firstName||"", ln=o.lastName||"";
     let first=fn, last=ln;
     if(!fn&&!ln&&o.name){ const parts=String(o.name).split(/,|\s+/).filter(Boolean); if(String(o.name).includes(",")){last=parts[0];first=parts.slice(1).join(" ");} else {first=parts[0];last=parts.slice(1).join(" ");} }
-    const key=(o.ghin||"").trim() || (last+"|"+first).toLowerCase();
-    const p=upsertPlayer({firstName:first.trim(),lastName:last.trim(),ghin:(o.ghin||"").trim(),index:num(o.index),gender:o.gender||"M"});
-    if(o.index!=null&&o.index!=="") p.index=num(o.index);
+    const p=upsertPlayer({firstName:first.trim(),lastName:last.trim(),ghin:(o.ghin||"").trim(),index:parseIndex(o.index),gender:o.gender||"M"});
+    if(o.index!=null&&o.index!=="") p.index=parseIndex(o.index);
     added++;
     if(isRounds){
       p.rounds=p.rounds||[];
@@ -880,8 +1002,9 @@ function importPlayersBlob(txt){
 function upsertPlayer(data){
   let p=null;
   if(data.ghin) p=state.players.find(x=>x.ghin&&x.ghin===data.ghin);
+  if(!p && data.ghinId) p=state.players.find(x=>x.ghinId&&String(x.ghinId)===String(data.ghinId));
   if(!p) p=state.players.find(x=>x.firstName===data.firstName && x.lastName===data.lastName && data.lastName);
-  if(p){ if(data.index!=null) p.index=data.index; if(data.gender) p.gender=data.gender; if(!p.ghin&&data.ghin)p.ghin=data.ghin; }
+  if(p){ if(data.index!=null) p.index=data.index; if(data.gender) p.gender=data.gender; if(!p.ghin&&data.ghin)p.ghin=data.ghin; if(data.ghinId)p.ghinId=data.ghinId; }
   else { p={id:uid(),rounds:[],...data}; state.players.push(p); }
   return p;
 }
@@ -905,12 +1028,45 @@ function openImport(){
     </div>
     <textarea id="impRounds" placeholder='Paste GHIN scores JSON or CSV rows…' style="margin-top:6px"></textarea>
     <button class="primary small" id="impRoundsBtn" style="margin-top:6px">Add rounds to player</button>
+    <div id="impResult"></div>
     <hr style="margin:16px 0;border:none;border-top:1px solid var(--line)">
-    <h3>3 · Live GHIN API</h3>
-    <p class="help">Browsers block direct calls to GHIN (CORS), so live fetching needs the small helper proxy included in
-      this project (<code>ghin-proxy.js</code>). See the <b>Help</b> tab → "Pulling round history from GHIN" for the exact steps.
-      Once running, paste the JSON it returns into box&nbsp;2 above.</p>
-    <div id="impResult"></div>`;
+    <h3>3 · Pull Geneva Golf Club members live from GHIN ⛳</h3>
+    <p class="help">Log in with your own GHIN account. The app detects your club, loads the <b>Geneva Golf Club roster</b>,
+      and can pull every member's score history — all in your browser. Credentials are never stored; the login token is
+      kept only for this tab.</p>
+    <div class="info" id="ghinLoginState"></div>
+
+    <details id="ghinSettings"><summary>GHIN connection settings</summary>
+      <div class="row" style="margin-top:8px">
+        <div class="field" style="flex:1;min-width:280px"><label>GHINcom app token (required) <span class="muted">— the long static token from the GHIN web client</span></label>
+          <input id="ghAppToken" type="password" value="${esc(state.ghin.appToken||"")}" placeholder="paste the static app token"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Club ID (auto-fills on login)</label><input id="ghClub" value="${esc(state.ghin.clubId||"")}" style="width:120px"></div>
+        <div class="field"><label>Association ID</label><input id="ghAssoc" value="${esc(state.ghin.assocId||"")}" style="width:120px"></div>
+        <div class="field"><label>Score pages / golfer (×20)</label><input id="ghPages" type="number" min="1" max="20" value="${state.ghin.pages||3}" style="width:80px"></div>
+        <div class="field" style="flex:1;min-width:220px"><label>API base</label><input id="ghBase" value="${esc(state.ghin.base)}"></div>
+      </div>
+    </details>
+
+    <div class="row" style="margin-top:10px">
+      <div class="field"><label>Email or GHIN #</label><input id="ghEmail" placeholder="you@example.com" autocomplete="username"></div>
+      <div class="field"><label>Password</label><input id="ghPass" type="password" autocomplete="current-password"></div>
+      <button class="primary" id="ghLoginBtn">Log in to GHIN</button>
+      <button id="ghLogoutBtn" style="display:none">Log out</button>
+    </div>
+
+    <div id="ghActions" style="display:none;margin-top:12px">
+      <div class="row">
+        <div class="field"><label>Filter by last name (optional)</label><input id="ghLastName" placeholder="leave blank for all"></div>
+        <button class="primary" id="ghRosterBtn">Load Geneva roster</button>
+        <button id="ghScoresBtn">Pull scores for all members</button>
+      </div>
+      <div class="legend"><span class="muted">Tip: load the roster first, then pull scores. Pulling all scores makes one
+        request per member, so it can take a minute for a big roster.</span></div>
+    </div>
+    <div id="ghinStatus"></div>`;
+
   $("#impFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{$("#impPlayers").value=rd.result;}; rd.readAsText(f); };
   $("#impPlayersBtn").onclick=()=>{ const res=importPlayersBlob($("#impPlayers").value); showImpResult(res); renderAll(); };
   $("#impRoundsBtn").onclick=()=>{
@@ -920,7 +1076,73 @@ function openImport(){
     if(!rounds.length){ showImpResult({error:"No rounds parsed."}); return; }
     p.rounds=(p.rounds||[]).concat(rounds); save(); showImpResult({msg:`Added ${rounds.length} round(s) to ${playerName(pid)}.`}); renderAll();
   };
+
+  // ---- GHIN settings persistence ----
+  const saveGhinCfg=()=>{ const c=state.ghin;
+    c.appToken=$("#ghAppToken").value.trim(); c.clubId=$("#ghClub").value.trim();
+    c.assocId=$("#ghAssoc").value.trim(); c.pages=Math.max(1,num($("#ghPages").value)||3);
+    c.base=$("#ghBase").value.trim()||c.base; save(); };
+  ["ghAppToken","ghClub","ghAssoc","ghPages","ghBase"].forEach(id=>$("#"+id).oninput=saveGhinCfg);
+
+  const refreshGhinUi=()=>{
+    const inn = !!GHIN.token;
+    $("#ghActions").style.display = inn?"":"none";
+    $("#ghLogoutBtn").style.display = inn?"":"none";
+    $("#ghLoginBtn").style.display = inn?"none":"";
+    const who = GHIN.me ? `${esc((GHIN.me.first_name||"")+" "+(GHIN.me.last_name||"")).trim()||"member"}` : "";
+    $("#ghLoginState").innerHTML = inn
+      ? `✅ Logged in${who?" as <b>"+who+"</b>":""}. Club: <b>${esc(state.ghin.clubName||"(detected on next call)")}</b>${state.ghin.clubId?` <span class="muted">#${esc(state.ghin.clubId)}</span>`:""}.`
+      : `Not logged in. Enter the app token (settings above) and your GHIN credentials.`;
+  };
+  refreshGhinUi();
+
+  $("#ghLoginBtn").onclick=async()=>{
+    saveGhinCfg();
+    const em=$("#ghEmail").value.trim(), pw=$("#ghPass").value;
+    if(!em||!pw){ ghinStatus({error:"Enter your email/GHIN and password."}); return; }
+    ghinStatus({busy:"Logging in…"});
+    try{ await GHIN.login(em,pw); $("#ghPass").value=""; ghinStatus({msg:"Logged in. Now load the Geneva roster."});
+      // reflect auto-detected club id
+      $("#ghClub").value=state.ghin.clubId||""; $("#ghAssoc").value=state.ghin.assocId||""; refreshGhinUi(); }
+    catch(e){ ghinStatus({error:e.message}); }
+  };
+  $("#ghLogoutBtn").onclick=()=>{ GHIN.setToken(null); GHIN.me=null; refreshGhinUi(); ghinStatus({msg:"Logged out."}); };
+
+  $("#ghRosterBtn").onclick=async()=>{
+    saveGhinCfg();
+    ghinStatus({busy:"Loading Geneva roster…"});
+    try{
+      const list = await GHIN.roster($("#ghLastName").value.trim());
+      let added=0; list.forEach(g=>{ const d=playerFromGhinGolfer(g); if(d.lastName||d.ghin){ upsertPlayer(d); added++; } });
+      save(); renderAll();
+      ghinStatus({msg:`Loaded ${added} member(s) from the club roster. Now "Pull scores for all members".`});
+    }catch(e){ ghinStatus({error:e.message}); }
+  };
+
+  $("#ghScoresBtn").onclick=async()=>{
+    saveGhinCfg();
+    const targets = state.players.filter(p=>p.ghinId||p.ghin);
+    if(!targets.length){ ghinStatus({error:"No members with a GHIN id yet — load the roster first."}); return; }
+    let done=0, ok=0, fail=0;
+    for(const p of targets){
+      ghinStatus({busy:`Pulling scores… ${++done}/${targets.length} (${esc(playerName(p.id))})`});
+      try{
+        const raw = await GHIN.scores(p.ghinId||p.ghin);
+        p.rounds = roundsFromGhinJson(raw);
+        ok++; save(); renderPlayers();
+      }catch(e){ fail++; }
+    }
+    renderAll();
+    ghinStatus({msg:`Done. Pulled scores for ${ok} member(s)${fail?`, ${fail} failed (see console)`:""}.`});
+  };
+
   $("#importDialog").showModal();
+}
+function ghinStatus(res){
+  const el=$("#ghinStatus"); if(!el) return;
+  if(res.error) el.innerHTML=`<div class="warn">${esc(res.error)}</div>`;
+  else if(res.busy) el.innerHTML=`<div class="info">${esc(res.busy)}</div>`;
+  else el.innerHTML=`<div class="ok-box">${esc(res.msg||"Done.")}</div>`;
 }
 function showImpResult(res){
   const el=$("#impResult");
@@ -1053,19 +1275,31 @@ function renderHelp(){
         A GHIN golfer-search JSON also works.</li>
   </ul>
 
-  <h3 id="ghin">2 · Pulling round history from GHIN</h3>
-  <div class="info">GHIN has no open public API, and your browser will <b>block direct calls</b> to GHIN's servers
-  (CORS). There are two practical paths:</div>
-  <p><b>Path A — paste JSON (no setup).</b> If you can view a member's scores in the GHIN app/website and capture the
-  scores JSON response, paste it into <b>Import… → box 2</b> for that player. The tool understands GHIN's score fields
-  (<code>played_at</code>, <code>adjusted_gross_score</code>, <code>course_rating</code>, <code>slope_rating</code>,
-  <code>number_of_holes</code>, <code>differential</code>, etc.).</p>
-  <p><b>Path B — run the included proxy (for live fetching).</b> The file <code>ghin-proxy.js</code> in this project is a
-  tiny Node helper that logs into GHIN and fetches a golfer's scores, sidestepping CORS. From a terminal:</p>
-  <pre style="background:#f0f3f2;padding:10px;border-radius:8px;overflow:auto"><code>node ghin-proxy.js --email YOU@example.com --password '****' --ghin 1234567 &gt; rick.json</code></pre>
-  <p>Then paste <code>rick.json</code> into <b>Import… → box 2</b>. Run it per member, or pass <code>--out folder</code>
-  to batch a list (see comments in the file). <i>Use your own GHIN credentials and only pull data your club is entitled
-  to review.</i></p>
+  <h3 id="ghin">2 · Pulling Geneva members live from GHIN (recommended)</h3>
+  <p>Open <b>Import… → section 3</b>:</p>
+  <ol>
+    <li>Expand <b>GHIN connection settings</b> and paste the <b>GHINcom app token</b> (the long static token the GHIN
+      web client ships — same value used by the existing club app). This is required by GHIN's login and only needs to
+      be entered once (it's saved locally).</li>
+    <li>Enter <b>your own</b> GHIN email/number and password and click <b>Log in to GHIN</b>. The app auto-detects your
+      club, so the Club ID fills in for <b>Geneva Golf Club</b>.</li>
+    <li>Click <b>Load Geneva roster</b> — every active member is pulled in (name, GHIN #, index). Add a last-name filter
+      to narrow it.</li>
+    <li>Click <b>Pull scores for all members</b> to fetch each member's recent score history (set how many pages of 20
+      in settings).</li>
+  </ol>
+  <div class="info">This works because GHIN currently returns permissive CORS headers, so the browser can call
+  <code>api2.ghin.com</code> directly. Your password is never stored — only a short-lived session token is kept for the
+  current tab. Plus-handicaps (<code>"+2.7"</code>) and 9-hole scaled differentials are handled automatically.</div>
+  <p class="help"><i>Use your own GHIN credentials and only pull data your committee is entitled to review. GHIN's
+  endpoints are unofficial and can change; if a call fails, double-check the app token and Club ID in settings.</i></p>
+
+  <h4 style="margin:14px 0 4px">Alternatives</h4>
+  <ul>
+    <li><b>Paste JSON</b> for one member into <b>Import… → box 2</b> if you captured a scores response by hand.</li>
+    <li><b>Command-line:</b> <code>ghin-proxy.js</code> (a small Node helper) can fetch scores from a terminal — useful
+      for scripting/batch. See the file's header comments.</li>
+  </ul>
 
   <h3>3 · The Players view</h3>
   <p>Columns: Handicap <b>Index</b>, <b>Course Handicap</b> for 9 and 18 holes at the tee you pick, number of

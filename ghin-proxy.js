@@ -44,11 +44,16 @@ const path = require("path");
  * ------------------------------------------------------------------------- */
 const CONFIG = {
   base: "https://api2.ghin.com/api/v1",
-  loginPath: "/golfer_login.json",          // POST { user: { email_or_ghin, password, remember_me } }
-  // Scores endpoint. {ghin} and {limit} are substituted. Some deployments use
-  // "/scores.json?golfer_id={ghin}&offset=0&limit={limit}" instead — swap if needed.
-  scoresPath: "/golfers/{ghin}/scores.json?offset=0&limit={limit}&statuses=Validated",
-  golferPath: "/golfers/{ghin}.json"         // optional: golfer details incl. handicap_index
+  loginPath: "/golfer_login.json",
+  // GHIN login requires a STATIC app token (the long string the GHIN web client
+  // ships, e.g. app.js) in the body alongside your credentials. Pass it with
+  // --apptoken, or hardcode it here.
+  appToken: "",
+  // {ghin} and {limit} are substituted. Scores are paginated 20/page.
+  scoresPath: "/golfers/{ghin}/scores.json?per_page={limit}&page=1&source=GHINcom",
+  golferPath: "/golfers/{ghin}.json?source=GHINcom",
+  // Club roster (--club): all active golfers in a club.
+  rosterPath: "/golfers.json?club_id={club}&status=Active&per_page=100&page=1&source=GHINcom"
 };
 
 function parseArgs(argv){
@@ -59,7 +64,9 @@ function parseArgs(argv){
     if (a === "--email") o.email = next();
     else if (a === "--password") o.password = next();
     else if (a === "--token") o.token = next();
+    else if (a === "--apptoken") o.apptoken = next();
     else if (a === "--ghin") o.ghin = next();
+    else if (a === "--club") o.club = next();
     else if (a === "--batch") o.batch = next();
     else if (a === "--out") o.out = next();
     else if (a === "--limit") o.limit = parseInt(next(), 10) || 40;
@@ -70,22 +77,31 @@ function parseArgs(argv){
 }
 
 function usage(){
-  console.error(`ghin-proxy.js — fetch GHIN scores as JSON
+  console.error(`ghin-proxy.js — fetch GHIN data as JSON (requires the static GHINcom --apptoken)
 
-  node ghin-proxy.js --email YOU --password PASS --ghin 1234567 > player.json
-  node ghin-proxy.js --email YOU --password PASS --batch ghins.txt --out ghin-out
-  node ghin-proxy.js --token JWT --ghin 1234567 > player.json
+  # Geneva Golf Club roster (club_id 52147):
+  node ghin-proxy.js --email YOU --password PASS --apptoken 'TOKEN' --club 52147 > roster.json
 
-Options: --limit N (default 40)  --base URL  --help
+  # one golfer's scores:
+  node ghin-proxy.js --email YOU --password PASS --apptoken 'TOKEN' --ghin 1234567 > player.json
+
+  # batch scores (one GHIN per line in ghins.txt):
+  node ghin-proxy.js --email YOU --password PASS --apptoken 'TOKEN' --batch ghins.txt --out ghin-out
+
+Options: --apptoken STR (required)  --club ID  --limit N (default 40)  --token JWT  --base URL  --help
 `);
 }
 
-async function login(base, emailOrGhin, password){
+async function login(base, emailOrGhin, password, appToken){
   const url = base + CONFIG.loginPath;
+  if (!appToken) throw new Error("Missing app token. Pass --apptoken '<static GHINcom token>'.");
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify({ user: { email_or_ghin: emailOrGhin, password, remember_me: true } })
+    body: JSON.stringify({
+      user: { email_or_ghin: emailOrGhin, password, remember_me: true, source: "GHINcom" },
+      token: appToken
+    })
   });
   if (!res.ok) throw new Error(`Login failed (${res.status} ${res.statusText}). ${await safeText(res)}`);
   const data = await res.json();
@@ -141,14 +157,26 @@ async function pullOne(base, token, ghin, limit){
 
 (async function main(){
   const o = parseArgs(process.argv);
-  if (o.help || (!o.ghin && !o.batch)){ usage(); process.exit(o.help ? 0 : 1); }
+  if (o.help || (!o.ghin && !o.batch && !o.club)){ usage(); process.exit(o.help ? 0 : 1); }
 
   let token = o.token;
   try{
     if (!token){
       if (!o.email || !o.password){ throw new Error("Provide --email and --password (or --token)."); }
-      token = await login(o.base, o.email, o.password);
+      token = await login(o.base, o.email, o.password, o.apptoken || CONFIG.appToken);
       process.stderr.write("Logged in to GHIN.\n");
+    }
+
+    // --club: dump the club roster as JSON (paste into the web app's player import).
+    if (o.club){
+      const url = o.base + CONFIG.rosterPath.replace("{club}", encodeURIComponent(o.club));
+      const res = await fetch(url, { headers: { "Authorization": "Bearer " + token, "Accept": "application/json" } });
+      if (!res.ok) throw new Error(`Roster request failed (${res.status}). ${await safeText(res)}`);
+      const roster = await res.json();
+      process.stdout.write(JSON.stringify(roster, null, 2) + "\n");
+      const n = (roster.golfers || roster.data || []).length;
+      process.stderr.write(`Fetched roster for club ${o.club} (${n} golfers).\n`);
+      if (!o.ghin && !o.batch) return;
     }
 
     const targets = [];

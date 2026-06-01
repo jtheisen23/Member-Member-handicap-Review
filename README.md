@@ -35,34 +35,37 @@ anywhere. Export a JSON backup to save or share.
 - **CSV** with columns `lastName,firstName,ghin,index,gender` (see `sample-players.csv`).
 - Or a **GHIN golfer-search JSON** response.
 
-### Round history
-Round history comes from **GHIN**. GHIN has no open public API and browsers block direct
-calls to it (CORS), so there are two practical paths:
+### Pull the whole Geneva roster live from GHIN (recommended)
+The app talks to GHIN's `api2.ghin.com` mobile API **directly from the browser** — GHIN
+currently serves permissive CORS headers, so no proxy is needed. In **Import… → section 3**:
 
-**Path A — paste JSON (no setup).** Capture a member's scores JSON from the GHIN app/site and
-paste it into **Import… → box 2** for that player. The importer understands GHIN's fields
-(`played_at`, `adjusted_gross_score`, `course_rating`, `slope_rating`, `number_of_holes`,
-`differential`, …).
+1. Open **GHIN connection settings** and paste the **GHINcom app token** — the long static token
+   the GHIN web client ships (the same value the existing club app uses). Required by GHIN's
+   login; entered once and saved locally.
+2. Enter **your own** GHIN email/number + password → **Log in to GHIN**. Your club is
+   auto-detected; the Club ID pre-fills to **Geneva Golf Club (`52147`)**.
+3. **Load Geneva roster** — every active member is imported (name, GHIN #, index). Optional
+   last-name filter to narrow it.
+4. **Pull scores for all members** — fetches each member's recent score history (choose how many
+   pages of 20 in settings).
 
-**Path B — run the included proxy (live fetch).** [`ghin-proxy.js`](./ghin-proxy.js) is a tiny
-zero-dependency Node script that logs into GHIN and fetches a golfer's scores, sidestepping
-CORS. Requires Node 18+.
+Your password is never stored; only a short-lived session token is kept for the current tab.
+Plus-handicaps (`"+2.7"` → −2.7) and 9-hole scaled differentials are handled automatically.
 
-```bash
-# one golfer
-node ghin-proxy.js --email you@example.com --password 'secret' --ghin 1234567 > player.json
+> Use your own GHIN credentials and only pull data your committee is entitled to review. GHIN's
+> endpoints are unofficial and can change.
 
-# batch: one GHIN per line in ghins.txt -> writes <ghin>.json into ./ghin-out
-node ghin-proxy.js --email you@example.com --password 'secret' --batch ghins.txt --out ghin-out
-```
-
-Then paste the resulting JSON into **Import… → box 2**. GHIN's endpoints are unofficial and can
-change — if a request fails, edit the `CONFIG` block at the top of `ghin-proxy.js`.
-
-> Use your own GHIN credentials and only pull data your club is entitled to review.
-
-You can also load rounds via CSV — columns
-`lastName,firstName,ghin,date,score,rating,slope,tees,holes,type` (see `sample-rounds.csv`).
+### Alternatives
+- **Paste JSON** for one member into **Import… → box 2** if you captured a scores response by hand.
+- **Command line** — [`ghin-proxy.js`](./ghin-proxy.js) (Node 18+) for scripting/batch:
+  ```bash
+  # Geneva roster (club_id 52147)
+  node ghin-proxy.js --email you@example.com --password 'secret' --apptoken 'TOKEN' --club 52147 > roster.json
+  # one golfer's scores
+  node ghin-proxy.js --email you@example.com --password 'secret' --apptoken 'TOKEN' --ghin 1234567 > player.json
+  ```
+- **CSV** — players (`lastName,firstName,ghin,index,gender`) and rounds
+  (`…,date,score,rating,slope,tees,holes,type`). See `sample-players.csv` / `sample-rounds.csv`.
 
 ---
 
