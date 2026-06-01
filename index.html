@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.18";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.19";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -877,6 +877,18 @@ function roundsFromGhinJson(j){
     };
   }).filter(r=>r.date||r.score);
 }
+/* Does this golfer record belong to the given club? Used to scope an
+   association-wide last-name search down to one club. If the record carries no
+   club info at all, trust the server-side club_id filter and keep it. */
+function golferInClub(g, clubId){
+  clubId=String(clubId);
+  const hits=[g.club_id, g.club&&g.club.id];
+  const affs=g.club_affiliations||g.clubs||g.golfer_club_affiliations||[];
+  if(Array.isArray(affs)) affs.forEach(a=>hits.push(a&&(a.club_id||a.id)));
+  const known=hits.filter(x=>x!=null&&x!=="");
+  if(!known.length) return true;                 // no club info -> trust server filter
+  return known.some(x=>String(x)===clubId);
+}
 /* Map a GHIN golfer record (search/roster result) into our player model. */
 function playerFromGhinGolfer(g){
   const club = g.club || {};
@@ -954,27 +966,36 @@ const GHIN = {
     try{ return JSON.parse(body); }catch(e){ throw new Error("GHIN returned a non-JSON response."); }
   },
 
-  /* Full club roster — confirmed working call:
-     GET /golfers/search.json?club_id&association_id&status=Active&per_page=100&page=N
-     (association_id is required; returns data.golfers; paginate until <100). */
+  /* Full club roster.
+     GHIN's valid search modes (from the API's own error) are: golfer_id,
+     last_name+state, last_name+country, last_name+association_id, or
+     club_id+local_number. There is NO "club_id+association_id" listing mode.
+     So we do a valid last_name+association_id search and add club_id as an
+     extra server-side filter, iterating last-name initials A–Z to cover everyone
+     (de-duped, and soft-filtered to the club client-side as a safety). */
   async roster(lastName=""){
     const cfg=state.ghin;
-    if(!cfg.clubId) throw new Error("No Club ID set — log in (it auto-detects your club) or enter it manually.");
     if(!cfg.assocId) throw new Error("No Association ID set (Geneva = 106). Add it in Connection settings.");
-    let page=1, all=[], guard=0;
-    while(guard++ < 60){
-      const j = await this.get("/golfers/search.json", {
-        // exact param order/shape from the working app
-        club_id:cfg.clubId, association_id:cfg.assocId, source:"GHINcom",
-        page, per_page:100, status:"Active",
-        last_name:lastName||undefined
-      });
-      const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
-      all = all.concat(list);
-      if(list.length<100) break;
-      page++;
+    const letters = lastName ? [lastName] : "abcdefghijklmnopqrstuvwxyz".split("");
+    const byId = new Map();
+    let li=0;
+    for(const letter of letters){
+      li++;
+      if(letters.length>1 && typeof ghinStatus==="function")
+        ghinStatus({busy:`Loading roster… last name “${letter.toUpperCase()}” (${li}/${letters.length}) — ${byId.size} members so far`});
+      let page=1;
+      while(page<=25){
+        const j = await this.get("/golfers/search.json", {
+          last_name:letter, association_id:cfg.assocId, club_id:cfg.clubId,
+          status:"Active", per_page:100, page
+        });
+        const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
+        list.forEach(g=>{ if(golferInClub(g, cfg.clubId)) byId.set(String(g.id||g.ghin||g.golfer_id), g); });
+        if(list.length<100) break;
+        page++;
+      }
     }
-    return all;
+    return [...byId.values()];
   },
 
   /* Score history for one golfer. GHIN nests these under revision_scores.scores
