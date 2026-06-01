@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.8";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.9";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -949,7 +949,9 @@ const GHIN = {
     let page=1, all=[], guard=0;
     while(guard++ < 60){
       const j = await this.get("/golfers.json", {
-        global_search:true,            // required by /golfers.json; club_id scopes it to the club
+        // global_search must be PRESENT; =true means a global name search (needs `search`),
+        // =false scopes to the club via club_id — that's the roster path.
+        global_search:false,
         club_id:cfg.clubId, status:"Active",
         last_name:lastName||undefined,
         per_page:100, page
