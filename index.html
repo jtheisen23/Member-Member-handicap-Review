@@ -332,7 +332,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.38";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.39";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -1795,16 +1795,26 @@ function renderSync(){
   renderSyncStatus();
   $("#syncConnectBtn").onclick=async()=>{
     const msg=$("#syncMsg");
-    let cfg; try{ cfg=JSON.parse($("#syncCfg").value); }catch(e){ msg.innerHTML=`<div class="warn">Config isn't valid JSON: ${esc(e.message)}</div>`; return; }
+    let cfg; try{ cfg=parseLooseConfig($("#syncCfg").value); }catch(e){ msg.innerHTML=`<div class="warn">${esc(e.message)}</div>`; return; }
     try{ await syncConnect(cfg, $("#syncRoom").value.trim(), false); msg.innerHTML=`<div class="ok-box">Connected. If the room already has data you now see it; otherwise click “Publish my data now” to seed it.</div>`; renderSyncStatus(); }
     catch(e){ msg.innerHTML=`<div class="warn">${esc(e.message)}</div>`; }
   };
   $("#syncPublishBtn").onclick=async()=>{
     const msg=$("#syncMsg");
-    if(!SYNC.on){ let cfg; try{ cfg=JSON.parse($("#syncCfg").value); }catch(e){ msg.innerHTML=`<div class="warn">Connect first (config isn't valid JSON).</div>`; return; } try{ await syncConnect(cfg,$("#syncRoom").value.trim(),false); }catch(e){ msg.innerHTML=`<div class="warn">${esc(e.message)}</div>`; return; } }
+    if(!SYNC.on){ let cfg; try{ cfg=parseLooseConfig($("#syncCfg").value); }catch(e){ msg.innerHTML=`<div class="warn">${esc(e.message)}</div>`; return; } try{ await syncConnect(cfg,$("#syncRoom").value.trim(),false); }catch(e){ msg.innerHTML=`<div class="warn">${esc(e.message)}</div>`; return; } }
     doSyncPush(); msg.innerHTML=`<div class="ok-box">Published your current setup to room “${esc($("#syncRoom").value.trim())}”.</div>`;
   };
   $("#syncDisconnectBtn").onclick=()=>{ syncDisconnect(); $("#syncMsg").innerHTML=`<div class="info">Disconnected — this device is back to local-only.</div>`; };
+}
+/* Accept the firebaseConfig in any form: strict JSON, JS object literal with
+   unquoted keys, or the whole pasted snippet (we extract the {...}). */
+function parseLooseConfig(str){
+  str=String(str||"").trim();
+  if(!str) throw new Error("Paste your Firebase config first.");
+  const m=str.match(/\{[\s\S]*\}/); if(m) str=m[0];
+  try{ return JSON.parse(str); }catch(e){}
+  try{ const o=Function('"use strict";return ('+str+')')(); if(o&&typeof o==="object") return o; }catch(e){}
+  throw new Error("Couldn't read the config — copy the { … } object from Firebase's “Config” option.");
 }
 
 /* =========================== EVENTS / WIRING =========================== */
