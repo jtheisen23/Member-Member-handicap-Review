@@ -334,7 +334,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.41";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.42";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -1843,46 +1843,44 @@ function renderSync(){
   $("#view-sync").innerHTML = `
     <div class="card">
       <h2>☁ Share / Live Sync</h2>
-      <p class="help">Live sync is <b>preconfigured and auto-connects</b> — teammates just open the link and see
-        <b>everything you see</b> (teams, settings, field, players &amp; scores, posting-watch baseline), updating live.
-        No GHIN login needed for viewers. The fields below are only if you want to point at a different Firebase project or room.</p>
+      <p class="help">Live sync is <b>preconfigured</b> — everyone who opens the link automatically sees the same data
+        (teams, settings, field, players &amp; scores), updating live. No setup needed.</p>
       <div id="syncStatusBox"></div>
       <div id="adminLockBox" style="margin-top:10px"></div>
-      <div class="field" style="margin-top:10px"><label>Firebase config <span class="muted">(paste the <code>firebaseConfig</code> object — must include <code>databaseURL</code>)</span></label>
-        <textarea id="syncCfg" placeholder='{ "apiKey": "...", "authDomain": "...", "databaseURL": "https://YOUR-DB.firebaseio.com", "projectId": "..." }'>${esc(cfgStr)}</textarea></div>
-      <div class="row">
-        <div class="field"><label>Room ID <span class="muted">(share this exact value with your committee)</span></label><input id="syncRoom" value="${esc(room)}" style="min-width:220px"></div>
-        <button class="primary" id="syncConnectBtn">Connect &amp; sync</button>
-        <button id="syncPublishBtn" title="Force-push your current data to the room">⤴ Publish my data now</button>
-        <button class="danger" id="syncDisconnectBtn">Disconnect</button>
-      </div>
       <div id="syncMsg" style="margin-top:8px"></div>
-      <div class="muted" style="margin-top:10px;font-size:11px">Build ${APP_VERSION}</div>
-    </div>
 
-    <div class="card">
-      <h3>One-time Firebase setup (≈5 min)</h3>
-      <ol class="help" style="line-height:1.7">
-        <li>In the <a href="https://console.firebase.google.com" target="_blank">Firebase console</a> open your project → <b>Build → Realtime Database → Create Database</b> (pick a region; start in <b>test mode</b> for now).</li>
-        <li>Project settings (gear icon) → <b>Your apps</b> → add a <b>Web app</b> → copy the <code>firebaseConfig</code> object and paste it above. Make sure it includes <code>databaseURL</code>.</li>
-        <li>Pick a <b>Room ID</b> (any phrase, e.g. <code>geneva-mm-2026</code>) and click <b>Connect &amp; sync</b>, then <b>Publish my data now</b>.</li>
-        <li>Send teammates the app link <i>plus</i> the same <b>Firebase config + Room ID</b> (or tell me the config and I'll bake it into the page so they only need the link).</li>
-      </ol>
-      <div class="warn">Security: test-mode rules let anyone with the config + room read/write, and they expire in 30 days. For a club event that's usually fine, but for stricter control set Realtime Database <b>Rules</b> to require sign-in, or keep the Room ID private. Tell me if you want help locking it down.</div>
+      <details style="margin-top:14px">
+        <summary class="muted" style="font-size:12px">Advanced — connection settings (only if changing Firebase project or room)</summary>
+        <div class="field" style="margin-top:10px"><label>Firebase config <span class="muted">(must include <code>databaseURL</code>)</span></label>
+          <textarea id="syncCfg" placeholder='{ "apiKey": "...", "databaseURL": "https://YOUR-DB.firebaseio.com", ... }'>${esc(cfgStr)}</textarea></div>
+        <div class="row">
+          <div class="field"><label>Room ID</label><input id="syncRoom" value="${esc(room)}" style="min-width:220px"></div>
+          <button class="primary" id="syncConnectBtn">Connect &amp; sync</button>
+          <button id="syncPublishBtn" title="Force-push your current data to the room">⤴ Publish my data now</button>
+          <button class="danger" id="syncDisconnectBtn">Disconnect</button>
+        </div>
+        <ol class="help" style="line-height:1.7;margin-top:10px">
+          <li>Firebase console → <b>Build → Realtime Database → Create Database</b> (test mode).</li>
+          <li>Project settings → <b>Your apps</b> → Web app → copy the <code>firebaseConfig</code> (with <code>databaseURL</code>) into the box.</li>
+          <li>Pick a <b>Room ID</b>, click <b>Connect &amp; sync</b>, then <b>Publish my data now</b>.</li>
+        </ol>
+        <div class="warn">Test-mode rules let anyone with the config + room read/write and expire in 30 days. For stricter control set Realtime Database <b>Rules</b> to require sign-in. Ask me for help locking it down.</div>
+      </details>
+      <div class="muted" style="margin-top:10px;font-size:11px">Build ${APP_VERSION}</div>
     </div>`;
   renderSyncStatus();
-  $("#syncConnectBtn").onclick=async()=>{
+  if($("#syncConnectBtn")) $("#syncConnectBtn").onclick=async()=>{
     const msg=$("#syncMsg");
     let cfg; try{ cfg=parseLooseConfig($("#syncCfg").value); }catch(e){ msg.innerHTML=`<div class="warn">${esc(e.message)}</div>`; return; }
     try{ await syncConnect(cfg, $("#syncRoom").value.trim(), false); msg.innerHTML=`<div class="ok-box">Connected. If the room already has data you now see it; otherwise click “Publish my data now” to seed it.</div>`; renderSyncStatus(); }
     catch(e){ msg.innerHTML=`<div class="warn">${esc(e.message)}</div>`; }
   };
-  $("#syncPublishBtn").onclick=async()=>{
+  if($("#syncPublishBtn")) $("#syncPublishBtn").onclick=async()=>{
     const msg=$("#syncMsg");
     if(!SYNC.on){ let cfg; try{ cfg=parseLooseConfig($("#syncCfg").value); }catch(e){ msg.innerHTML=`<div class="warn">${esc(e.message)}</div>`; return; } try{ await syncConnect(cfg,$("#syncRoom").value.trim(),false); }catch(e){ msg.innerHTML=`<div class="warn">${esc(e.message)}</div>`; return; } }
     doSyncPush(); msg.innerHTML=`<div class="ok-box">Published your current setup to room “${esc($("#syncRoom").value.trim())}”.</div>`;
   };
-  $("#syncDisconnectBtn").onclick=()=>{ syncDisconnect(); $("#syncMsg").innerHTML=`<div class="info">Disconnected — this device is back to local-only.</div>`; };
+  if($("#syncDisconnectBtn")) $("#syncDisconnectBtn").onclick=()=>{ syncDisconnect(); $("#syncMsg").innerHTML=`<div class="info">Disconnected — this device is back to local-only.</div>`; };
 }
 /* Accept the firebaseConfig in any form: strict JSON, JS object literal with
    unquoted keys, or the whole pasted snippet (we extract the {...}). */
