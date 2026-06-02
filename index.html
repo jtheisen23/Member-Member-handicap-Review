@@ -206,6 +206,27 @@
         </label>
       </div>
       <div id="teamSummary"></div>
+
+      <div class="card" style="margin:10px 0 0;background:#fafbfb">
+        <h3>Create a pairing</h3>
+        <p class="help">Partners already chosen? Enter each pair here. Pick two players and add the team, or paste your whole list below.</p>
+        <div class="row">
+          <select id="pairA" style="min-width:200px"></select>
+          <span class="muted">+</span>
+          <select id="pairB" style="min-width:200px"></select>
+          <button class="primary" id="btnAddPair">Add team</button>
+        </div>
+        <details style="margin-top:10px">
+          <summary>Paste a list of pairings (fastest for many teams)</summary>
+          <p class="help">One pair per line, two names separated by a comma, slash, <code>&amp;</code>, <code>and</code>, or <code>vs</code>.
+            Names can be <code>First Last</code> or <code>Last, First</code>. Example:<br>
+            <code>Anderson / Park</code> &nbsp;·&nbsp; <code>Theisen, Jeremy &amp; Bianchi, Joe</code></p>
+          <textarea id="pairBulk" placeholder="Smith / Jones&#10;Anderson / Park&#10;…"></textarea>
+          <button class="primary small" id="btnBulkPairs" style="margin-top:6px">Create teams from list</button>
+          <div id="pairResult"></div>
+        </details>
+      </div>
+
       <div class="grid2" style="margin-top:10px">
         <div class="card" style="margin:0">
           <h3>Unassigned players</h3>
@@ -290,7 +311,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.25";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.26";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -597,6 +618,46 @@ function teamHandicaps(p1,p2){
 }
 function playerName(id){ const p=state.players.find(x=>x.id===id); if(!p) return ""; return (p.lastName?p.lastName+", ":"")+(p.firstName||"")||p.name||"(unnamed)"; }
 
+/* ---- pairing entry helpers ---- */
+const normName = s => String(s||"").toLowerCase().replace(/[.,']/g,"").replace(/\s+/g," ").trim();
+function matchPlayer(name, available){
+  const n = normName(name);
+  if(!n) return null;
+  const full = p => [normName((p.firstName||"")+" "+(p.lastName||"")), normName((p.lastName||"")+" "+(p.firstName||""))];
+  let c = available.filter(p=>full(p).includes(n));            // full name (either order)
+  if(c.length!==1) { const e=available.filter(p=>normName(p.lastName)===n); if(e.length) c=e; }  // exact last name
+  if(c.length!==1) { const s=available.filter(p=>normName(p.lastName).startsWith(n)||full(p).some(f=>f.includes(n))); if(s.length) c=s; }
+  if(c.length===1) return {player:c[0]};
+  if(c.length>1) return {ambiguous:c};
+  return null;
+}
+function splitPair(line){
+  const strong = line.split(/\s*(?:\/|&|\||;|\t|\bvs\.?\b|\band\b|\+)\s*/i).map(s=>s.trim()).filter(Boolean);
+  if(strong.length>=2) return [strong[0], strong.slice(1).join(" ")];
+  const byComma = line.split(/\s*,\s*/).map(s=>s.trim()).filter(Boolean);
+  if(byComma.length===2) return byComma;
+  return null;
+}
+function createTeamsFromText(text){
+  const used = new Set();
+  state.teams.forEach(t=>t.forEach(id=>id&&used.add(id)));
+  const lines = String(text||"").split(/\n/).map(s=>s.trim()).filter(Boolean);
+  let created=0; const problems=[];
+  for(const line of lines){
+    const parts = splitPair(line);
+    if(!parts){ problems.push(`Couldn't split into two names: “${line}”`); continue; }
+    const avail = state.players.filter(p=>!used.has(p.id));
+    const a = matchPlayer(parts[0], avail);
+    const b = matchPlayer(parts[1], avail.filter(p=>!(a&&a.player&&p.id===a.player.id)));
+    const fail = (label,res)=>{ if(!res) problems.push(`No match for “${label}” in “${line}”`); else if(res.ambiguous) problems.push(`“${label}” is ambiguous (${res.ambiguous.length} matches) in “${line}”`); };
+    if(!a||a.ambiguous||!b||b.ambiguous){ fail(parts[0],a); fail(parts[1],b); continue; }
+    state.teams.push([a.player.id, b.player.id]); used.add(a.player.id); used.add(b.player.id); created++;
+  }
+  const html = `<div class="${problems.length?'warn':'ok-box'}" style="margin-top:8px">Created ${created} team(s).`+
+    (problems.length?`<br>Couldn't place ${problems.length} line(s):<ul style="margin:6px 0 0;padding-left:18px">${problems.map(p=>`<li>${esc(p)}</li>`).join("")}</ul>`:"")+`</div>`;
+  return {created, problems, html};
+}
+
 function renderTeams(){
   const assigned = new Set();
   state.teams.forEach(t=>t.forEach(id=>id&&assigned.add(id)));
@@ -610,6 +671,13 @@ function renderTeams(){
         state.teams.map((t,i)=>`<option value="${i}" ${t.filter(Boolean).length>=2?'disabled':''}>Team ${i+1}${t.filter(Boolean).length>=2?' (full)':''}</option>`).join("")
       }</select></div>`;
   }).join("") : '<p class="muted">All players assigned.</p>';
+
+  // pairing-picker dropdowns (unassigned players)
+  const opts = `<option value="">— player —</option>`+pool
+    .slice().sort((a,b)=>playerName(a.id).localeCompare(playerName(b.id)))
+    .map(p=>`<option value="${p.id}">${esc(playerName(p.id))} (${fmt(playerMetrics(p).index)})</option>`).join("");
+  if($("#pairA")) $("#pairA").innerHTML = opts;
+  if($("#pairB")) $("#pairB").innerHTML = opts;
 
   // teams
   $("#teamsList").innerHTML = state.teams.map((t,i)=>{
@@ -1356,8 +1424,15 @@ document.addEventListener("DOMContentLoaded",()=>{
   $("#pdDelete").onclick=()=>{ if(editingId && confirm("Delete this player?")){ state.players=state.players.filter(x=>x.id!==editingId); state.teams=state.teams.map(t=>t.map(id=>id===editingId?null:id)); save(); $("#playerDialog").close(); renderAll(); } };
   // teams
   $("#btnAutoBalance").onclick=autoBalance;
-  $("#btnClearTeams").onclick=()=>{ state.teams=[]; save(); renderTeams(); };
+  $("#btnClearTeams").onclick=()=>{ if(confirm("Clear all pairings?")){ state.teams=[]; save(); renderTeams(); } };
   $("#btnAddTeam").onclick=()=>{ state.teams.push([null,null]); save(); renderTeams(); };
+  $("#btnAddPair").onclick=()=>{
+    const a=$("#pairA").value, b=$("#pairB").value;
+    if(!a||!b){ alert("Pick two players."); return; }
+    if(a===b){ alert("Pick two different players."); return; }
+    state.teams.push([a,b]); save(); renderTeams();
+  };
+  $("#btnBulkPairs").onclick=()=>{ const res=createTeamsFromText($("#pairBulk").value); save(); renderTeams(); const el=$("#pairResult"); if(el) el.innerHTML=res.html; if(!res.problems.length) $("#pairBulk").value=""; };
   $("#btnExportTeams").onclick=exportTeams;
   $("#balanceMetric").onchange=renderTeams;
   $("#teamsList").addEventListener("click",e=>{
