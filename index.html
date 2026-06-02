@@ -324,7 +324,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.35";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.36";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -894,6 +894,13 @@ function renderWatch(){
   });
   posts.sort((a,b)=> b.date.localeCompare(a.date) || a.name.localeCompare(b.name));
 
+  // freshness diagnostic: latest post on file + recent activity (any date) for the field
+  const allDates=[];
+  watchPlayers.forEach(p=>(p.rounds||[]).forEach(r=>{ const d=String(r.date||"").slice(0,10); if(d) allDates.push(d); }));
+  const latestDate = allDates.length? allDates.sort().slice(-1)[0] : null;
+  const cutoff7 = (()=>{ const d=new Date(); d.setDate(d.getDate()-7); return dayStr(d); })();
+  const recent7 = allDates.filter(d=>d>=cutoff7).length;
+
   // index movement vs baseline
   let moveRows="";
   if(hasBase){
@@ -952,6 +959,11 @@ function renderWatch(){
 
     <div class="card">
       <h3>Score posts in window <span class="muted" style="font-weight:400">(${start} → ${end}) · ${posts.length} post(s)</span></h3>
+      <div class="${recent7?'info':'warn'}" style="margin-bottom:8px">
+        Field data freshness: latest post on file is <b>${latestDate||"none"}</b>; <b>${recent7}</b> post(s) across the field in the last 7 days.
+        ${latestDate && latestDate<start ? ` Your window starts <b>${start}</b> — set “Watch from” to <b>${latestDate}</b> or earlier to include them.` : ""}
+        ${recent7===0 ? ` If players just posted, click <b>Update scores from GHIN</b> (GHIN can lag a few hours after posting).` : ""}
+      </div>
       <div class="tablewrap"><table><thead><tr>
         <th>Date</th><th>Player</th><th class="num">Score</th><th>Tees</th><th class="num">Holes</th><th>Type</th>
         <th class="num" title="Score differential">Diff</th><th class="num">Index</th><th>Flag</th>
