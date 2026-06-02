@@ -290,7 +290,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.24";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.25";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -606,7 +606,7 @@ function renderTeams(){
   $("#poolList").innerHTML = pool.length? pool.map(p=>{
     const m=playerMetrics(p);
     return `<div class="team-slot"><span><b>${esc(playerName(p.id))}</b> <span class="muted">Idx ${fmt(m.index)}</span></span>
-      <select data-assign="${p.id}"><option value="">Assign to…</option>${
+      <select data-assign="${p.id}"><option value="">Assign to…</option><option value="new">➕ New team</option>${
         state.teams.map((t,i)=>`<option value="${i}" ${t.filter(Boolean).length>=2?'disabled':''}>Team ${i+1}${t.filter(Boolean).length>=2?' (full)':''}</option>`).join("")
       }</select></div>`;
   }).join("") : '<p class="muted">All players assigned.</p>';
@@ -1366,7 +1366,9 @@ document.addEventListener("DOMContentLoaded",()=>{
   });
   $("#poolList").addEventListener("change",e=>{
     const sel=e.target.closest("[data-assign]"); if(!sel||sel.value==="")return;
-    const pid=sel.dataset.assign; const ti=+sel.value; const slot=state.teams[ti][0]?1:0;
+    const pid=sel.dataset.assign;
+    if(sel.value==="new"){ state.teams.push([pid,null]); save(); renderTeams(); return; }
+    const ti=+sel.value; const slot=state.teams[ti][0]?1:0;
     state.teams[ti][slot]=pid; save(); renderTeams();
   });
   // settings inputs (delegated)
