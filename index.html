@@ -314,7 +314,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.29";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.30";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -624,6 +624,14 @@ function teamHandicaps(p1,p2){
 }
 function playerName(id){ const p=state.players.find(x=>x.id===id); if(!p) return ""; return (p.lastName?p.lastName+", ":"")+(p.firstName||"")||p.name||"(unnamed)"; }
 
+/* Combined 9-hole course handicap of a pair, per tee (sum of both players' CH9). */
+function combinedCH9(p1,p2){
+  if(!p1||!p2) return {w:null,b:null};
+  const i1=playerMetrics(p1).index, i2=playerMetrics(p2).index;
+  const sum=t=>{ const a=ch9(i1,teeByName(t)), c=ch9(i2,teeByName(t)); return (a!=null&&c!=null)?a+c:null; };
+  return {w:sum("White"), b:sum("Blue")};
+}
+
 /* ---- pairing entry helpers ---- */
 const normName = s => String(s||"").toLowerCase().replace(/[.,']/g,"").replace(/\s+/g," ").trim();
 function matchPlayer(name, available){
@@ -706,8 +714,10 @@ function renderTeams(){
       </div>`;
     };
     const combined = (p1&&p2)?fmtIndex((playerMetrics(p1).index||0)+(playerMetrics(p2).index||0)):"—";
+    const cc = combinedCH9(p1,p2);
+    const combHcp = (p1&&p2)?` · combined CH9 W ${fmtCH(cc.w)} / B ${fmtCH(cc.b)}`:"";
     return `<div class="team-card">
-      <h4>Team ${i+1} <span class="muted" style="font-weight:400">· combined index ${combined}</span>
+      <h4>Team ${i+1} <span class="muted" style="font-weight:400">· combined index ${combined}${combHcp}</span>
         <button class="small" data-deleteteam="${i}" style="float:right">✕</button></h4>
       ${slot(0,t[0])}${slot(1,t[1])}
       ${alloc}
@@ -750,6 +760,8 @@ function renderOverview(){
   const cards = state.teams.map((t,i)=>{
     const p1=state.players.find(x=>x.id===t[0]), p2=state.players.find(x=>x.id===t[1]);
     const combined = (p1&&p2)?fmtIndex((playerMetrics(p1).index||0)+(playerMetrics(p2).index||0)):"—";
+    const cc = combinedCH9(p1,p2);
+    const combHcp = (p1&&p2)?`combined CH9 — White ${fmtCH(cc.w)} / Blue ${fmtCH(cc.b)}`:"";
     let rounds = `<p class="muted" style="margin:8px 0 0">Add a second player to see team handicaps.</p>`;
     if(p1&&p2){
       const h=teamHandicaps(p1,p2);
@@ -762,7 +774,7 @@ function renderOverview(){
       </tbody></table>`;
     }
     return `<div class="card" style="margin:0;break-inside:avoid">
-      <h3 style="margin:0 0 8px">Team ${i+1} <span class="muted" style="font-weight:400">· combined index ${combined}</span></h3>
+      <h3 style="margin:0 0 8px">Team ${i+1} <span class="muted" style="font-weight:400">· combined index ${combined}${combHcp?" · "+combHcp:""}</span></h3>
       <table class="hcp-table" style="width:100%"><thead><tr>
         <th>Player</th><th class="num">Index</th><th class="num" title="9-hole course handicap, White tees">CH9 White</th>
         <th class="num" title="9-hole course handicap, Blue tees">CH9 Blue</th>
