@@ -7,6 +7,7 @@
 <!-- Firebase (compat) for optional live cloud sync. If these fail to load the app still works offline. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <style>
   :root{
     --green:#1b5e20; --green-2:#2e7d32; --green-light:#e8f5e9;
@@ -334,7 +335,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.44";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.45";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -1765,8 +1766,24 @@ function doSyncPush(){
   if(!SYNC.on||!SYNC.ref) return;
   SYNC.ref.set({ state, _by:SYNC.deviceId, updatedAt:Date.now() })
     .then(()=>setSyncStatus("live", Date.now()))
-    .catch(e=>{ console.warn("sync push failed", e); setSyncStatus("error"); });
+    .catch(e=>{
+      console.warn("sync push failed", e);
+      const denied = /permission_denied|PERMISSION_DENIED/i.test(e&&(e.message||e.code||""));
+      setSyncStatus("error");
+      if(denied){ const m=document.querySelector("#syncMsg"); if(m) m.innerHTML=`<div class="warn">Write blocked by database rules — sign in as the organizer (Share/Sync → Organizer security) to save changes.</div>`; }
+    });
 }
+
+/* ---- Firebase Auth (organizer hard-lock) ---- */
+const AUTH = { user:null, inited:false };
+function authInit(){
+  if(AUTH.inited) return; if(typeof firebase==="undefined"||!firebase.auth) return;
+  try{
+    firebase.auth().onAuthStateChanged(u=>{ AUTH.user=u||null; renderHeaderLock(); if(document.querySelector("#view-sync.active")) renderSync(); });
+    AUTH.inited=true;
+  }catch(e){ console.warn("auth init failed", e); }
+}
+function adminUID(){ return AUTH.user ? AUTH.user.uid : null; }
 function applyRemote(remote){
   if(!remote||!remote.state) return;
   SYNC.applying=true;
@@ -1789,6 +1806,7 @@ async function syncConnect(cfg, roomId, seedIfEmpty){
   if(!roomId) throw new Error("Enter a Room ID (e.g. geneva-mm-2026).");
   SYNC.deviceId = deviceId();
   if(!firebase.apps.length) firebase.initializeApp(cfg);
+  authInit();
   const db = firebase.database();
   if(SYNC.ref) SYNC.ref.off();
   SYNC.ref = db.ref("rooms/"+roomId);
@@ -1830,9 +1848,43 @@ function renderAdminLock(){
     if(q("#lockUnlockBtn")) q("#lockUnlockBtn").onclick=()=>{ if(unlockPrompt()) renderAdminLock(); };
   }
 }
+function renderAuthBox(){
+  const box=document.querySelector("#authBox"); if(!box) return;
+  const s=syncCfgGet()||{}; const room=s.roomId || (typeof DEFAULT_SYNC!=="undefined"?DEFAULT_SYNC.room:"geneva-mm-2026");
+  const hasAuth = typeof firebase!=="undefined" && firebase.auth;
+  const u=AUTH.user;
+  const rules = uid => `{\n  "rules": {\n    "rooms": {\n      "${room}": {\n        ".read": true,\n        ".write": "auth != null && auth.uid === '${uid||"PASTE_YOUR_UID_HERE"}'"\n      }\n    }\n  }\n}`;
+  box.innerHTML = `<details ${u?"open":""}>
+    <summary class="muted" style="font-size:12px">Organizer security — server-enforced lock (Firebase Auth) ${u?"· ✅ signed in":""}</summary>
+    <p class="help" style="margin-top:8px">This is the <b>real</b> lock: with the rules below, only your signed-in organizer account can write to the database — anyone else is read-only, even with dev tools. Viewers still don't sign in.</p>
+    ${!hasAuth ? `<div class="warn">Auth library didn't load — reload the page and try again.</div>` :
+      (u ? `<div class="ok-box">✅ Signed in as <b>${esc(u.email||"organizer")}</b> <button class="small" id="authSignOut" style="margin-left:8px">Sign out</button></div>
+            <div class="field" style="margin-top:8px"><label>Your admin UID</label><input id="authUid" value="${esc(u.uid)}" readonly onclick="this.select()"></div>`
+         : `<div class="row" style="margin-top:8px">
+              <div class="field"><label>Organizer email</label><input id="authEmail" type="email" autocomplete="username" style="min-width:200px"></div>
+              <div class="field"><label>Password</label><input id="authPass" type="password" autocomplete="current-password"></div>
+              <button class="primary" id="authSignIn">Sign in</button>
+              <button id="authSignUp" title="First time only — creates your organizer account">Create account</button>
+            </div>`)}
+    <div id="authMsg" style="margin-top:6px"></div>
+    <label class="muted" style="font-size:12px;margin-top:12px;display:block">Realtime Database → Rules (paste &amp; Publish):</label>
+    <textarea readonly onclick="this.select()" style="min-height:150px">${esc(rules(u&&u.uid))}</textarea>
+    <ol class="help" style="line-height:1.7">
+      <li>Firebase console → <b>Build → Authentication → Get started → Email/Password → Enable</b>.</li>
+      <li>Here, enter an email + password and click <b>Create account</b> (first time), then <b>Sign in</b>. Your UID fills in above.</li>
+      <li>Firebase console → <b>Realtime Database → Rules</b> → paste the box above → <b>Publish</b>.</li>
+      <li>Done — only your signed-in account can save. Keep yourself signed in on your device.</li>
+    </ol>
+  </details>`;
+  const q=s=>box.querySelector(s);
+  if(q("#authSignIn")) q("#authSignIn").onclick=async()=>{ const m=q("#authMsg"); try{ await firebase.auth().signInWithEmailAndPassword(q("#authEmail").value.trim(), q("#authPass").value); m.innerHTML=`<div class="ok-box">Signed in.</div>`; }catch(e){ m.innerHTML=`<div class="warn">${esc(e.message)}</div>`; } };
+  if(q("#authSignUp")) q("#authSignUp").onclick=async()=>{ const m=q("#authMsg"); try{ await firebase.auth().createUserWithEmailAndPassword(q("#authEmail").value.trim(), q("#authPass").value); m.innerHTML=`<div class="ok-box">Account created &amp; signed in.</div>`; }catch(e){ m.innerHTML=`<div class="warn">${esc(e.message)}</div>`; } };
+  if(q("#authSignOut")) q("#authSignOut").onclick=()=>{ try{ firebase.auth().signOut(); }catch(e){} };
+}
 function renderSyncStatus(){
   const box=document.querySelector("#syncStatusBox"); if(!box) return;
   renderAdminLock();
+  try{ renderAuthBox(); }catch(e){ console.warn("authBox", e); }
   const on=SYNC.on;
   box.innerHTML = on
     ? `<div class="ok-box">✅ Live sync is ON. Everyone using the same Room ID sees this data and changes sync automatically${SYNC.lastAt?` · last update ${new Date(SYNC.lastAt).toLocaleTimeString()}`:""}.</div>`
@@ -1867,6 +1919,7 @@ function renderSync(){
         (teams, settings, field, players &amp; scores), updating live. No setup needed.</p>
       <div id="syncStatusBox"></div>
       <div id="adminLockBox" style="margin-top:10px"></div>
+      <div id="authBox" style="margin-top:10px"></div>
       <div id="syncMsg" style="margin-top:8px"></div>
 
       <details style="margin-top:14px">
