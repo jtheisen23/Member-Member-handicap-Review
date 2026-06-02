@@ -334,7 +334,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.43";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.44";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -1842,17 +1842,8 @@ function renderSync(){
   const s = syncCfgGet() || (typeof DEFAULT_SYNC!=="undefined" && DEFAULT_SYNC.config ? {cfg:DEFAULT_SYNC.config, roomId:DEFAULT_SYNC.room} : {});
   const cfgStr = s.cfg ? JSON.stringify(s.cfg,null,2) : "";
   const room = s.roomId || "geneva-mm-2026";
-  $("#view-sync").innerHTML = `
-    <div class="card">
-      <h2>☁ Share / Live Sync</h2>
-      <p class="help">Live sync is <b>preconfigured</b> — everyone who opens the link automatically sees the same data
-        (teams, settings, field, players &amp; scores), updating live. No setup needed.</p>
-      <div id="syncStatusBox"></div>
-      <div id="adminLockBox" style="margin-top:10px"></div>
-      <div id="syncMsg" style="margin-top:8px"></div>
-
-      <details style="margin-top:14px">
-        <summary class="muted" style="font-size:12px">Advanced — connection settings (only if changing Firebase project or room)</summary>
+  const editable = canEdit();
+  const advanced = editable ? `
         <div class="field" style="margin-top:10px"><label>Firebase config <span class="muted">(must include <code>databaseURL</code>)</span></label>
           <textarea id="syncCfg" placeholder='{ "apiKey": "...", "databaseURL": "https://YOUR-DB.firebaseio.com", ... }'>${esc(cfgStr)}</textarea></div>
         <div class="row">
@@ -1866,7 +1857,21 @@ function renderSync(){
           <li>Project settings → <b>Your apps</b> → Web app → copy the <code>firebaseConfig</code> (with <code>databaseURL</code>) into the box.</li>
           <li>Pick a <b>Room ID</b>, click <b>Connect &amp; sync</b>, then <b>Publish my data now</b>.</li>
         </ol>
-        <div class="warn">Test-mode rules let anyone with the config + room read/write and expire in 30 days. For stricter control set Realtime Database <b>Rules</b> to require sign-in. Ask me for help locking it down.</div>
+        <div class="warn">Test-mode rules let anyone with the config + room read/write and expire in 30 days. For stricter control set Realtime Database <b>Rules</b> to require sign-in. Ask me for help locking it down.</div>`
+    : `<div class="warn" style="margin-top:10px">🔒 Connection settings (Firebase config &amp; Room ID) are managed by the organizer. Unlock with the edit password to change them.</div>
+       <div class="muted" style="margin-top:6px;font-size:12px">Current room: <b>${esc(room)}</b></div>`;
+  $("#view-sync").innerHTML = `
+    <div class="card">
+      <h2>☁ Share / Live Sync</h2>
+      <p class="help">Live sync is <b>preconfigured</b> — everyone who opens the link automatically sees the same data
+        (teams, settings, field, players &amp; scores), updating live. No setup needed.</p>
+      <div id="syncStatusBox"></div>
+      <div id="adminLockBox" style="margin-top:10px"></div>
+      <div id="syncMsg" style="margin-top:8px"></div>
+
+      <details style="margin-top:14px">
+        <summary class="muted" style="font-size:12px">Advanced — connection settings ${editable?"(only if changing Firebase project or room)":"(organizer only)"}</summary>
+        ${advanced}
       </details>
       <div class="muted" style="margin-top:10px;font-size:11px">Build ${APP_VERSION}</div>
     </div>`;
