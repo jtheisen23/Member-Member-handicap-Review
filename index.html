@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Member-Member Handicap Review — Geneva Golf Club</title>
+<!-- Firebase (compat) for optional live cloud sync. If these fail to load the app still works offline. -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
   :root{
     --green:#1b5e20; --green-2:#2e7d32; --green-light:#e8f5e9;
@@ -108,6 +111,7 @@
     <div class="sub">Geneva Golf Club · Geneva, IL</div>
   </div>
   <div class="spacer"></div>
+  <span id="syncChip" title="Cloud sync status" style="display:none;font-size:12px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);border-radius:20px;padding:3px 10px;margin-right:6px"></span>
   <div class="toolbar">
     <button class="ghost" id="btnPullGhin">⛳ Pull from GHIN</button>
     <button class="ghost" id="btnSample">Load sample data</button>
@@ -126,6 +130,7 @@
   <button data-view="overview">Teams Overview</button>
   <button data-view="team-anomaly">Teams Anomaly</button>
   <button data-view="settings">Course &amp; Rules</button>
+  <button data-view="sync">☁ Share / Sync</button>
   <button data-view="help">Help</button>
 </nav>
 
@@ -289,6 +294,9 @@
     </div>
   </section>
 
+  <!-- ============ SHARE / SYNC ============ -->
+  <section class="view" id="view-sync"></section>
+
   <!-- ============ HELP ============ -->
   <section class="view" id="view-help">
     <div class="card" id="helpContent"></div>
@@ -324,7 +332,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.36";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.37";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -389,7 +397,7 @@ function migrate(s){
   s.players=s.players||[]; s.teams=s.teams||[];
   return s;
 }
-function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); if(typeof scheduleSyncPush==="function") scheduleSyncPush(); }
 
 /* ---------------------------- helpers ---------------------------- */
 const $ = sel => document.querySelector(sel);
@@ -1681,6 +1689,123 @@ function loadSample(){
   state.teams=[]; save(); renderAll(); switchView("players");
 }
 
+/* =========================== CLOUD SYNC (Firebase) =========================== */
+const SYNC = { on:false, ref:null, applying:false, timer:null, deviceId:null, status:"off", lastAt:0 };
+function syncCfgGet(){ try{ return JSON.parse(localStorage.getItem("mmhr_sync_cfg")||"null"); }catch(e){ return null; } }
+function syncCfgSave(o){ localStorage.setItem("mmhr_sync_cfg", JSON.stringify(o)); }
+function deviceId(){ let d=localStorage.getItem("mmhr_device"); if(!d){ d=Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem("mmhr_device",d); } return d; }
+
+function setSyncStatus(s, at){
+  SYNC.status=s; if(at) SYNC.lastAt=at;
+  const chip=document.querySelector("#syncChip"); if(!chip) return;
+  const map={off:["",""], connecting:["☁ connecting…",""], live:["☁ Live sync on",""], error:["☁ sync error",""], offline:["☁ offline",""]};
+  if(s==="off"){ chip.style.display="none"; return; }
+  chip.style.display="inline-block";
+  chip.textContent = s==="live" ? `☁ Live${SYNC.lastAt?" · "+new Date(SYNC.lastAt).toLocaleTimeString():""}` : (map[s]?map[s][0]:s);
+  if(document.querySelector("#view-sync.active") || (typeof renderSync==="function" && document.querySelector("#view-sync"))) { try{ if(document.querySelector("#syncStatusBox")) renderSyncStatus(); }catch(e){} }
+}
+
+function scheduleSyncPush(){ if(!SYNC.on||SYNC.applying||!SYNC.ref) return; clearTimeout(SYNC.timer); SYNC.timer=setTimeout(doSyncPush, 1200); }
+function doSyncPush(){
+  if(!SYNC.on||!SYNC.ref) return;
+  SYNC.ref.set({ state, _by:SYNC.deviceId, updatedAt:Date.now() })
+    .then(()=>setSyncStatus("live", Date.now()))
+    .catch(e=>{ console.warn("sync push failed", e); setSyncStatus("error"); });
+}
+function applyRemote(remote){
+  if(!remote||!remote.state) return;
+  SYNC.applying=true;
+  try{
+    state = migrate(remote.state);
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    const active = (document.querySelector("nav.tabs button.active")||{}).dataset?.view || "players";
+    renderAll(); rerenderView(active);
+  }finally{ setTimeout(()=>{ SYNC.applying=false; }, 50); }
+  setSyncStatus("live", remote.updatedAt||Date.now());
+}
+function rerenderView(v){
+  if(v==="anomalies") renderAnomalies(); else if(v==="watch") renderWatch(); else if(v==="teams") renderTeams();
+  else if(v==="overview") renderOverview(); else if(v==="team-anomaly") renderTeamAnomalies();
+  else if(v==="settings") renderSettings(); else if(v==="sync") renderSync(); else renderPlayers();
+}
+async function syncConnect(cfg, roomId, seedIfEmpty){
+  if(typeof firebase==="undefined" || !firebase.initializeApp) throw new Error("Firebase library isn't loaded (check your network / that the page can reach gstatic.com).");
+  if(!cfg || !cfg.databaseURL) throw new Error("Config needs a databaseURL — create a Realtime Database in Firebase and paste its config.");
+  if(!roomId) throw new Error("Enter a Room ID (e.g. geneva-mm-2026).");
+  SYNC.deviceId = deviceId();
+  if(!firebase.apps.length) firebase.initializeApp(cfg);
+  const db = firebase.database();
+  if(SYNC.ref) SYNC.ref.off();
+  SYNC.ref = db.ref("rooms/"+roomId);
+  SYNC.on = true; setSyncStatus("connecting");
+  SYNC.ref.on("value", snap=>{
+    const remote = snap.val();
+    if(!remote || !remote.state){ if(seedIfEmpty){ doSyncPush(); } setSyncStatus("live", Date.now()); return; }
+    if(remote._by===SYNC.deviceId){ setSyncStatus("live", remote.updatedAt); return; } // our own echo
+    applyRemote(remote);
+  }, err=>{ console.warn("sync listen error", err); setSyncStatus("error"); });
+  syncCfgSave({ cfg, roomId });
+}
+function syncDisconnect(){ if(SYNC.ref) SYNC.ref.off(); SYNC.ref=null; SYNC.on=false; localStorage.removeItem("mmhr_sync_cfg"); setSyncStatus("off"); if(document.querySelector("#view-sync.active")) renderSync(); }
+function syncAutoConnect(){
+  const s = syncCfgGet(); if(!s||!s.cfg||!s.roomId) return;
+  syncConnect(s.cfg, s.roomId, false).catch(e=>{ console.warn("auto-connect failed", e); setSyncStatus("error"); });
+}
+
+function renderSyncStatus(){
+  const box=document.querySelector("#syncStatusBox"); if(!box) return;
+  const on=SYNC.on;
+  box.innerHTML = on
+    ? `<div class="ok-box">✅ Live sync is ON. Everyone using the same Room ID sees this data and changes sync automatically${SYNC.lastAt?` · last update ${new Date(SYNC.lastAt).toLocaleTimeString()}`:""}.</div>`
+    : `<div class="warn">Not connected. Paste your Firebase config and a Room ID, then Connect.</div>`;
+}
+function renderSync(){
+  const s = syncCfgGet() || {};
+  const cfgStr = s.cfg ? JSON.stringify(s.cfg,null,2) : "";
+  const room = s.roomId || "geneva-mm-2026";
+  $("#view-sync").innerHTML = `
+    <div class="card">
+      <h2>☁ Share / Live Sync</h2>
+      <p class="help">Put your setup in a shared cloud "room" so teammates open the same link and see <b>everything you see</b>
+        — teams, settings, the field, pulled players &amp; scores, the posting-watch baseline — updating live. They don't
+        need to log into GHIN; they just open the page.</p>
+      <div id="syncStatusBox"></div>
+      <div class="field" style="margin-top:10px"><label>Firebase config <span class="muted">(paste the <code>firebaseConfig</code> object — must include <code>databaseURL</code>)</span></label>
+        <textarea id="syncCfg" placeholder='{ "apiKey": "...", "authDomain": "...", "databaseURL": "https://YOUR-DB.firebaseio.com", "projectId": "..." }'>${esc(cfgStr)}</textarea></div>
+      <div class="row">
+        <div class="field"><label>Room ID <span class="muted">(share this exact value with your committee)</span></label><input id="syncRoom" value="${esc(room)}" style="min-width:220px"></div>
+        <button class="primary" id="syncConnectBtn">Connect &amp; sync</button>
+        <button id="syncPublishBtn" title="Force-push your current data to the room">⤴ Publish my data now</button>
+        <button class="danger" id="syncDisconnectBtn">Disconnect</button>
+      </div>
+      <div id="syncMsg" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <h3>One-time Firebase setup (≈5 min)</h3>
+      <ol class="help" style="line-height:1.7">
+        <li>In the <a href="https://console.firebase.google.com" target="_blank">Firebase console</a> open your project → <b>Build → Realtime Database → Create Database</b> (pick a region; start in <b>test mode</b> for now).</li>
+        <li>Project settings (gear icon) → <b>Your apps</b> → add a <b>Web app</b> → copy the <code>firebaseConfig</code> object and paste it above. Make sure it includes <code>databaseURL</code>.</li>
+        <li>Pick a <b>Room ID</b> (any phrase, e.g. <code>geneva-mm-2026</code>) and click <b>Connect &amp; sync</b>, then <b>Publish my data now</b>.</li>
+        <li>Send teammates the app link <i>plus</i> the same <b>Firebase config + Room ID</b> (or tell me the config and I'll bake it into the page so they only need the link).</li>
+      </ol>
+      <div class="warn">Security: test-mode rules let anyone with the config + room read/write, and they expire in 30 days. For a club event that's usually fine, but for stricter control set Realtime Database <b>Rules</b> to require sign-in, or keep the Room ID private. Tell me if you want help locking it down.</div>
+    </div>`;
+  renderSyncStatus();
+  $("#syncConnectBtn").onclick=async()=>{
+    const msg=$("#syncMsg");
+    let cfg; try{ cfg=JSON.parse($("#syncCfg").value); }catch(e){ msg.innerHTML=`<div class="warn">Config isn't valid JSON: ${esc(e.message)}</div>`; return; }
+    try{ await syncConnect(cfg, $("#syncRoom").value.trim(), false); msg.innerHTML=`<div class="ok-box">Connected. If the room already has data you now see it; otherwise click “Publish my data now” to seed it.</div>`; renderSyncStatus(); }
+    catch(e){ msg.innerHTML=`<div class="warn">${esc(e.message)}</div>`; }
+  };
+  $("#syncPublishBtn").onclick=async()=>{
+    const msg=$("#syncMsg");
+    if(!SYNC.on){ let cfg; try{ cfg=JSON.parse($("#syncCfg").value); }catch(e){ msg.innerHTML=`<div class="warn">Connect first (config isn't valid JSON).</div>`; return; } try{ await syncConnect(cfg,$("#syncRoom").value.trim(),false); }catch(e){ msg.innerHTML=`<div class="warn">${esc(e.message)}</div>`; return; } }
+    doSyncPush(); msg.innerHTML=`<div class="ok-box">Published your current setup to room “${esc($("#syncRoom").value.trim())}”.</div>`;
+  };
+  $("#syncDisconnectBtn").onclick=()=>{ syncDisconnect(); $("#syncMsg").innerHTML=`<div class="info">Disconnected — this device is back to local-only.</div>`; };
+}
+
 /* =========================== EVENTS / WIRING =========================== */
 function switchView(v){
   $$("nav.tabs button").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
@@ -1692,6 +1817,7 @@ function switchView(v){
   if(v==="overview") renderOverview();
   if(v==="team-anomaly") renderTeamAnomalies();
   if(v==="settings") renderSettings();
+  if(v==="sync") renderSync();
   if(v==="help") renderHelp();
 }
 function renderAll(){ renderPlayers(); if($("#view-anomalies").classList.contains("active"))renderAnomalies(); if($("#view-teams").classList.contains("active"))renderTeams(); }
@@ -1760,6 +1886,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   });
 
   renderPlayers();
+  try{ syncAutoConnect(); }catch(e){ console.warn("sync auto-connect error", e); }
 });
 
 /* =========================== HELP =========================== */
