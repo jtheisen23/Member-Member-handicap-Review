@@ -335,7 +335,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.45";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.46";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -1850,6 +1850,8 @@ function renderAdminLock(){
 }
 function renderAuthBox(){
   const box=document.querySelector("#authBox"); if(!box) return;
+  // Organizer-only: hide the sign-in / rules from view-only (locked) devices.
+  if(!canEdit()){ box.innerHTML=""; return; }
   const s=syncCfgGet()||{}; const room=s.roomId || (typeof DEFAULT_SYNC!=="undefined"?DEFAULT_SYNC.room:"geneva-mm-2026");
   const hasAuth = typeof firebase!=="undefined" && firebase.auth;
   const u=AUTH.user;
