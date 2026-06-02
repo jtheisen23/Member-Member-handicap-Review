@@ -121,6 +121,7 @@
   <button data-view="players" class="active">Players</button>
   <button data-view="ghin">⛳ Pull from GHIN</button>
   <button data-view="anomalies">Anomaly Review</button>
+  <button data-view="watch">Posting Watch</button>
   <button data-view="teams">Team Builder</button>
   <button data-view="overview">Teams Overview</button>
   <button data-view="team-anomaly">Teams Anomaly</button>
@@ -248,6 +249,9 @@
   <!-- ============ TEAMS ANOMALY ============ -->
   <section class="view" id="view-team-anomaly"></section>
 
+  <!-- ============ POSTING WATCH ============ -->
+  <section class="view" id="view-watch"></section>
+
   <!-- ============ SETTINGS ============ -->
   <section class="view" id="view-settings">
     <div class="card">
@@ -318,7 +322,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.32";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.33";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -352,6 +356,7 @@ const DEFAULT_STATE = () => ({
     assocId:"106",        // Geneva's GHIN association id (required for the club roster search)
     pages:3               // pages of scores to pull per golfer (20 per page)
   },
+  watch: { start:"", end:"", baseline:null },   // pre-tournament posting watch window + index snapshot
   players: [],
   teams: []   // array of [playerIdOrNull, playerIdOrNull]
 });
@@ -378,6 +383,7 @@ function migrate(s){
     try{ sessionStorage.removeItem("mmhr_ghin_token"); }catch(e){}
   }
   if(!s.ghin.assocId) s.ghin.assocId=d.ghin.assocId;     // ensure Geneva association (106)
+  s.watch=s.watch||{start:"",end:"",baseline:null};
   s.players=s.players||[]; s.teams=s.teams||[];
   return s;
 }
@@ -853,6 +859,127 @@ function renderTeamAnomalies(){
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px">${cards}</div>`;
+}
+
+/* =========================== RENDER: POSTING WATCH =========================== */
+const dayStr = d => d.toISOString().slice(0,10);
+function defaultWatchStart(){ const d=new Date(); d.setDate(d.getDate()+1); return dayStr(d); } // tomorrow
+function renderWatch(){
+  const w = state.watch;
+  const start = w.start || defaultWatchStart();
+  const end   = w.end   || "2026-06-11";
+  const hasBase = w.baseline && w.baseline.players;
+
+  // collect every posted round whose date falls in the window
+  const posts=[];
+  state.players.forEach(p=>{
+    const idx = playerMetrics(p).index;
+    (p.rounds||[]).forEach(r=>{
+      const d=String(r.date||"").slice(0,10);
+      if(d && d>=start && d<=end){
+        posts.push({ name:playerName(p.id), ghin:p.ghin||"", date:d, score:r.score, tees:r.tees, holes:r.holes||18, type:r.type||"", diff:roundDifferential(r), idx });
+      }
+    });
+  });
+  posts.sort((a,b)=> b.date.localeCompare(a.date) || a.name.localeCompare(b.name));
+
+  // index movement vs baseline
+  let moveRows="";
+  if(hasBase){
+    const rows = state.players.map(p=>{
+      const b=w.baseline.players[p.id];
+      if(!b) return null;
+      const cur=playerMetrics(p);
+      const di = (cur.index!=null&&b.index!=null)? Math.round((cur.index-b.index)*10)/10 : null;
+      const newPosts = (cur.n||0)-(b.rounds||0);
+      return { name:playerName(p.id), bi:b.index, ci:cur.index, di, np:newPosts };
+    }).filter(Boolean)
+      .filter(r=> (r.di!=null && r.di!==0) || r.np>0 )   // only show players who changed
+      .sort((a,b)=> (b.di||0)-(a.di||0));
+    moveRows = rows.length? rows.map(r=>{
+      const up = r.di>0;   // index went UP = got worse = possible inflation
+      const cls = up?'flag high':(r.di<0?'flag med':'');
+      const tag = up?`<span class="flag high">↑ index rose ${fmt(r.di)}</span>`:(r.di<0?`<span class="flag med">↓ ${fmt(Math.abs(r.di))}</span>`:'');
+      return `<tr><td><b>${esc(r.name)}</b></td><td class="num">${fmtIndex(r.bi)}</td><td class="num">${fmtIndex(r.ci)}</td>
+        <td class="num">${r.di==null?"—":(r.di>0?"+":"")+fmt(r.di)}</td><td class="num">${r.np>0?r.np:"—"}</td><td>${tag}</td></tr>`;
+    }).join("") : `<tr><td colspan="6" class="muted" style="padding:14px">No index changes since baseline yet.</td></tr>`;
+  }
+
+  const postRows = posts.length? posts.map(p=>{
+    const gap = (p.diff!=null&&p.idx!=null)? p.diff-p.idx : null;   // diff worse than index by this much
+    const flag = gap!=null && gap>4 ? `<span class="flag high" title="Differential well above their index — raises handicap">high post</span>`
+               : (p.diff!=null&&p.idx!=null&&(p.idx-p.diff)>4 ? `<span class="flag med" title="Much better than index">low post</span>` : "");
+    return `<tr><td>${esc(p.date)}</td><td><b>${esc(p.name)}</b></td><td class="num">${p.score??"—"}</td>
+      <td>${esc(p.tees||"")}</td><td class="num">${p.holes}</td><td>${esc(p.type||"")}</td>
+      <td class="num">${fmt(p.diff)}</td><td class="num">${fmtIndex(p.idx)}</td><td>${flag}</td></tr>`;
+  }).join("") : `<tr><td colspan="9" class="muted" style="padding:16px;text-align:center">No posts in the window yet. Re-pull from GHIN over the next days to capture new posts.</td></tr>`;
+
+  $("#view-watch").innerHTML = `
+    <div class="card">
+      <h2>Posting Watch <span class="muted" style="font-weight:400">— pre-tournament index monitoring</span></h2>
+      <p class="help">Logs every score posted in your window and tracks index movement so you can catch anyone
+        manipulating their handicap before play. <b>How to use:</b> click <b>Capture baseline now</b> today, then each day
+        re-pull from GHIN (⛳ tab → Pull everyone, or the button below) and check back here. Indexes drifting <b>up</b>
+        before the event are the red flag.</p>
+      <div class="row">
+        <div class="field"><label>Watch from</label><input type="date" id="watchStart" value="${start}"></div>
+        <div class="field"><label>through</label><input type="date" id="watchEnd" value="${end}"></div>
+        <button class="primary" id="watchBaseline">📸 Capture baseline now</button>
+        <button id="watchRefresh">⟳ Update scores from GHIN</button>
+      </div>
+      <div id="watchStatus" style="margin-top:8px">${hasBase
+        ? `<div class="ok-box">Baseline captured ${esc((w.baseline.capturedAt||"").replace("T"," ").slice(0,16))} — ${Object.keys(w.baseline.players).length} players snapshotted.</div>`
+        : `<div class="warn">No baseline yet — click “Capture baseline now” to record everyone's current index as the reference point.</div>`}</div>
+    </div>
+
+    ${hasBase?`<div class="card">
+      <h3>Index movement since baseline</h3>
+      <p class="help">Only players whose index changed or who posted new rounds are shown. <b>↑ index rose</b> = handicap got higher (the manipulation pattern to watch).</p>
+      <div class="tablewrap"><table><thead><tr><th>Player</th><th class="num">Baseline</th><th class="num">Current</th><th class="num">Δ</th><th class="num">New posts</th><th>Flag</th></tr></thead>
+      <tbody>${moveRows}</tbody></table></div>
+    </div>`:""}
+
+    <div class="card">
+      <h3>Score posts in window <span class="muted" style="font-weight:400">(${start} → ${end}) · ${posts.length} post(s)</span></h3>
+      <div class="tablewrap"><table><thead><tr>
+        <th>Date</th><th>Player</th><th class="num">Score</th><th>Tees</th><th class="num">Holes</th><th>Type</th>
+        <th class="num" title="Score differential">Diff</th><th class="num">Index</th><th>Flag</th>
+      </tr></thead><tbody>${postRows}</tbody></table></div>
+      <div class="legend"><span><span class="flag high">high post</span> differential well above their index (raises handicap)</span>
+        <span><span class="flag med">low post</span> well below index</span>
+        <span class="muted">· Type H=home, A=away, C=competition, T=tournament</span></div>
+    </div>`;
+
+  $("#watchStart").onchange=e=>{ state.watch.start=e.target.value; save(); renderWatch(); };
+  $("#watchEnd").onchange=e=>{ state.watch.end=e.target.value; save(); renderWatch(); };
+  $("#watchBaseline").onclick=()=>{
+    const players={};
+    state.players.forEach(p=>{ const m=playerMetrics(p); players[p.id]={index:m.index, rounds:m.n, name:playerName(p.id)}; });
+    state.watch.baseline={ capturedAt:new Date().toISOString(), players }; save(); renderWatch();
+  };
+  $("#watchRefresh").onclick=async()=>{
+    if(!GHIN.token){ $("#watchStatus").innerHTML=`<div class="warn">Log in first on the ⛳ Pull from GHIN tab, then try again.</div>`; return; }
+    const btn=$("#watchRefresh"); btn.disabled=true;
+    const r=await ghinRefreshScores(msg=>{ $("#watchStatus").innerHTML=`<div class="info">${esc(msg)}</div>`; });
+    btn.disabled=false; renderWatch();
+    $("#watchStatus").innerHTML=`<div class="ok-box">Updated ${r.ok} player(s)${r.fail?`, ${r.fail} failed`:""}. New posts in the window appear below.</div>`;
+  };
+}
+
+/* Refresh scores for all currently-loaded players (used by Posting Watch). */
+async function ghinRefreshScores(statusFn){
+  const targets = state.players.filter(p=>p.ghin||p.ghinId);
+  let ok=0, fail=0, done=0;
+  for(const p of targets){
+    if(statusFn) statusFn(`Updating scores… ${++done}/${targets.length} (${playerName(p.id)})`);
+    const id=p.ghin||p.ghinId; let s=false;
+    for(let a=0;a<2&&!s;a++){
+      try{ p.rounds=roundsFromGhinJson(await GHIN.scores(id)); ok++; s=true; save(); }
+      catch(e){ if(a===0) await new Promise(r=>setTimeout(r,400)); else fail++; }
+    }
+  }
+  renderAll();
+  return {ok,fail};
 }
 
 /* Auto-balance: pair strongest with weakest to equalize combined metric */
@@ -1536,6 +1663,7 @@ function switchView(v){
   $$(".view").forEach(s=>s.classList.toggle("active",s.id==="view-"+v));
   if(v==="ghin") renderGhin();
   if(v==="anomalies") renderAnomalies();
+  if(v==="watch") renderWatch();
   if(v==="teams") renderTeams();
   if(v==="overview") renderOverview();
   if(v==="team-anomaly") renderTeamAnomalies();
