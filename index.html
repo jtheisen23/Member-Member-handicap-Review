@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.22";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.23";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -360,11 +360,13 @@ const num = v => { const n = parseFloat(v); return isNaN(n)?null:n; };
    non-numeric values like "NH"/"WD" for golfers without an established index. */
 const parseIndex = v => {
   if(v==null||v==="") return null;
-  if(typeof v==="number") return v;
+  if(typeof v==="number") return Math.abs(v)>60 ? null : v;   // 999 sentinel = no handicap
   const s=String(v).trim().toUpperCase();
   if(s==="NH"||s==="WD"||s==="N/A") return null;
   if(s[0]==="+") { const n=parseFloat(s.slice(1)); return isNaN(n)?null:-n; }
-  const n=parseFloat(s); return isNaN(n)?null:n;
+  const n=parseFloat(s); if(isNaN(n)) return null;
+  if(Math.abs(n)>60) return null;   // 999/sentinel = no established handicap
+  return n;
 };
 const fmt = (v,d=1) => v===null||v===undefined||isNaN(v) ? "—" : Number(v).toFixed(d);
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
@@ -895,9 +897,10 @@ function playerFromGhinGolfer(g){
   return {
     firstName: (g.first_name||g.player_name_first||"").trim(),
     lastName:  (g.last_name||g.player_name_last||"").trim(),
-    ghin:      String(g.ghin || g.ghin_number || g.golfer_id || ""),
-    ghinId:    g.id || g.golfer_id || g.ghin || null,   // internal id used by /golfers/{id}/scores
-    index:     parseIndex(g.handicap_index ?? g.hi_value ?? g.hi_display ?? g.display_value ?? g.handicap),
+    ghin:      String(g.ghin || g.ghin_number || g.golfer_id || g.id || ""),
+    ghinId:    g.id || g.golfer_id || g.ghin || g.ghin_number || null,  // id for /golfers/{id}/scores
+    // prefer display strings; hi_value uses 999 as a "no handicap" sentinel
+    index:     parseIndex(g.handicap_index ?? g.hi_display ?? g.display ?? g.display_value ?? g.handicap ?? g.hi_value),
     gender:    g.gender || (club.gender) || "M",
     clubName:  g.club_name || club.club_name || ""
   };
@@ -930,16 +933,14 @@ const GHIN = {
     const tok = gu.golfer_user_token || gu.token || data.token || data.golfer_user_token;
     if(!tok) throw new Error("Logged in but no token found in the response.");
     this.setToken(tok); this.me=gu;
-    this.golferId = gu.id || gu.golfer_id || gu.ghin || null;
-    // Read the member's real club + association from the login response and use
-    // them (the hardcoded 106/52147 are just fallbacks).
-    const aff = gu.clubs || gu.club_affiliations || gu.golfer_club_affiliations || gu.memberships || [];
+    this.golferId = gu.golfer_id || gu.id || gu.ghin || null;
+    // The member's club/association/name live in golfer_user.golfers[0].
+    const aff = gu.golfers || gu.clubs || gu.club_affiliations || gu.memberships || [];
     const fc  = Array.isArray(aff) && aff.length ? aff[0] : {};
-    const clubId   = gu.club_id || gu.default_club_id || fc.club_id || fc.id;
-    const clubName = gu.club_name || fc.club_name || fc.name || cfg.clubName;
-    const assoc    = gu.association_id || gu.assoc_id || fc.association_id ||
-                     (gu.associations&&gu.associations[0]&&gu.associations[0].id) ||
-                     (fc.association&&fc.association.id);
+    if(fc.last_name) this.me = {...gu, first_name:fc.first_name, last_name:fc.last_name};
+    const clubId   = fc.club_id || fc.primary_club_id || gu.club_id || gu.default_club_id;
+    const clubName = fc.club_name || fc.primary_club_name || gu.club_name || cfg.clubName;
+    const assoc    = fc.golf_association_id || fc.primary_golf_association_id || gu.association_id;
     if(clubId)   cfg.clubId  = String(clubId);     // prefer detected
     if(clubName) cfg.clubName = clubName;
     if(assoc)    cfg.assocId = String(assoc);
@@ -967,36 +968,21 @@ const GHIN = {
     try{ return JSON.parse(body); }catch(e){ throw new Error("GHIN returned a non-JSON response."); }
   },
 
-  /* Full club roster.
-     GHIN's valid search modes (from the API's own error) are: golfer_id,
-     last_name+state, last_name+country, last_name+association_id, or
-     club_id+local_number. There is NO "club_id+association_id" listing mode.
-     So we do a valid last_name+association_id search and add club_id as an
-     extra server-side filter, iterating last-name initials A–Z to cover everyone
-     (de-duped, and soft-filtered to the club client-side as a safety). */
-  async roster(lastName=""){
+  /* Full club roster — the real endpoint: GET /clubs/{club_id}/golfers.json
+     returns every member of the club, paginated 100/page. No name needed. */
+  async roster(){
     const cfg=state.ghin;
-    if(!cfg.assocId) throw new Error("No Association ID set (Geneva = 106). Add it in Connection settings.");
-    const letters = lastName ? [lastName] : "abcdefghijklmnopqrstuvwxyz".split("");
-    const byId = new Map();
-    let li=0;
-    for(const letter of letters){
-      li++;
-      if(letters.length>1 && typeof ghinStatus==="function")
-        ghinStatus({busy:`Loading roster… last name “${letter.toUpperCase()}” (${li}/${letters.length}) — ${byId.size} members so far`});
-      let page=1;
-      while(page<=25){
-        const j = await this.get("/golfers/search.json", {
-          last_name:letter, association_id:cfg.assocId, club_id:cfg.clubId,
-          status:"Active", per_page:100, page
-        });
-        const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
-        list.forEach(g=>{ if(golferInClub(g, cfg.clubId)) byId.set(String(g.id||g.ghin||g.golfer_id), g); });
-        if(list.length<100) break;
-        page++;
-      }
+    if(!cfg.clubId) throw new Error("No Club ID set — log in or enter it in Connection settings.");
+    let page=1, all=[], guard=0;
+    while(guard++ < 80){
+      if(typeof ghinStatus==="function") ghinStatus({busy:`Loading Geneva roster… page ${page} (${all.length} members so far)`});
+      const j = await this.get(`/clubs/${encodeURIComponent(cfg.clubId)}/golfers.json`, { per_page:100, page });
+      const list = j.golfers || j.golfers_complete || j.data || (Array.isArray(j)?j:[]);
+      all = all.concat(list);
+      if(list.length<100) break;
+      page++;
     }
-    return [...byId.values()];
+    return all;
   },
 
   /* Score history for one golfer. GHIN nests these under revision_scores.scores
@@ -1216,8 +1202,13 @@ function wireGhin(){
   }
   async function loadRoster(){
     ghinStatus({busy:"Loading Geneva roster…"});
-    const list = await GHIN.roster($("#ghLastName")?$("#ghLastName").value.trim():"");
-    let added=0; list.forEach(g=>{ const d=playerFromGhinGolfer(g); if(d.lastName||d.ghin){ upsertPlayer(d); added++; } });
+    const list = await GHIN.roster();
+    let added=0, skipped=0;
+    list.forEach(g=>{
+      if(String(g.status||"").toLowerCase()==="inactive"){ skipped++; return; }  // active members only
+      const d=playerFromGhinGolfer(g);
+      if(d.lastName||d.ghin){ upsertPlayer(d); added++; }
+    });
     save(); renderAll();
     if(list.length && !added) ghinStatus({error:`GHIN returned ${list.length} record(s) but none mapped to players — open Diagnostics and send me the response so I can fix the field names.`});
     return added;
