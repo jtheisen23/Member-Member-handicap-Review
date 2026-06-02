@@ -122,6 +122,7 @@
   <button data-view="ghin">⛳ Pull from GHIN</button>
   <button data-view="anomalies">Anomaly Review</button>
   <button data-view="teams">Team Builder</button>
+  <button data-view="overview">Teams Overview</button>
   <button data-view="settings">Course &amp; Rules</button>
   <button data-view="help">Help</button>
 </nav>
@@ -241,6 +242,9 @@
     </div>
   </section>
 
+  <!-- ============ TEAMS OVERVIEW ============ -->
+  <section class="view" id="view-overview"></section>
+
   <!-- ============ SETTINGS ============ -->
   <section class="view" id="view-settings">
     <div class="card">
@@ -311,7 +315,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.27";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.28";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -727,6 +731,63 @@ function renderTeamSummary(){
   const cls = spread<=4?"ok-box":spread<=8?"warn":"warn";
   $("#teamSummary").innerHTML = `<div class="${cls}">${full.length} full teams. Combined-${metric} ranges
     ${fmt(mn)} – ${fmt(mx)} (spread ${fmt(spread)}). ${spread<=4?"Well balanced.":"Consider re-pairing to tighten the spread."}</div>`;
+}
+
+/* =========================== RENDER: TEAMS OVERVIEW =========================== */
+function renderOverview(){
+  const white=teeByName("White"), blue=teeByName("Blue");
+  if(!state.teams.length){
+    $("#view-overview").innerHTML = `<div class="card"><h2>Teams Overview</h2>
+      <p class="muted">No teams yet. Create pairings in the <b>Team Builder</b> tab, then come back here.</p></div>`;
+    return;
+  }
+  const full = state.teams.filter(t=>t[0]&&t[1]).length;
+  const playerRow = p=>{
+    if(!p) return `<tr><td class="muted">— empty —</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+    const m=playerMetrics(p);
+    return `<tr><td><b>${esc(playerName(p.id))}</b> <span class="muted">${esc(p.ghin||"")}</span></td>
+      <td class="num">${fmtIndex(m.index)}</td>
+      <td class="num">${fmtCH(ch9(m.index,white))}</td><td class="num">${fmtCH(ch9(m.index,blue))}</td>
+      <td class="num">${fmtCH(ch18(m.index,white))}</td><td class="num">${fmtCH(ch18(m.index,blue))}</td></tr>`;
+  };
+  const cards = state.teams.map((t,i)=>{
+    const p1=state.players.find(x=>x.id===t[0]), p2=state.players.find(x=>x.id===t[1]);
+    const combined = (p1&&p2)?fmtIndex((playerMetrics(p1).index||0)+(playerMetrics(p2).index||0)):"—";
+    let rounds = `<p class="muted" style="margin:8px 0 0">Add a second player to see team handicaps.</p>`;
+    if(p1&&p2){
+      const h=teamHandicaps(p1,p2);
+      const a=playerName(p1.id).split(",")[0], b=playerName(p2.id).split(",")[0];
+      rounds=`<table class="hcp-table" style="width:100%;margin-top:8px"><thead><tr><th>Round</th><th>Format · Tees</th><th class="num">Playing handicap</th></tr></thead><tbody>
+        <tr><td>1</td><td>Scramble · White</td><td class="num">Team ${fmtCH(h.r1)}</td></tr>
+        <tr><td>2</td><td>Mod. Alternate · Blue</td><td class="num">Team ${fmtCH(h.r2)}</td></tr>
+        <tr><td>3</td><td>Best Ball · White</td><td class="num">${esc(a)} ${fmtCH(h.r3a)} / ${esc(b)} ${fmtCH(h.r3b)}</td></tr>
+        <tr><td>4</td><td>Total Score · Blue</td><td class="num">${esc(a)} ${fmtCH(h.r4a)} / ${esc(b)} ${fmtCH(h.r4b)}</td></tr>
+      </tbody></table>`;
+    }
+    return `<div class="card" style="margin:0;break-inside:avoid">
+      <h3 style="margin:0 0 8px">Team ${i+1} <span class="muted" style="font-weight:400">· combined index ${combined}</span></h3>
+      <table class="hcp-table" style="width:100%"><thead><tr>
+        <th>Player</th><th class="num">Index</th><th class="num" title="9-hole course handicap, White">CH9 W</th>
+        <th class="num" title="9-hole course handicap, Blue">CH9 B</th>
+        <th class="num" title="18-hole course handicap, White">CH18 W</th><th class="num" title="18-hole course handicap, Blue">CH18 B</th>
+      </tr></thead><tbody>${playerRow(p1)}${playerRow(p2)}</tbody></table>
+      ${rounds}
+    </div>`;
+  }).join("");
+  $("#view-overview").innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <h2 style="margin:0">Teams Overview</h2>
+        <span class="muted">${full} full team(s) of 2</span>
+        <span class="spacer" style="flex:1"></span>
+        <button id="btnOverviewCsv">Export CSV</button>
+        <button onclick="window.print()">🖨 Print</button>
+      </div>
+      <p class="help">Read-only summary of every pairing with playing handicaps for all four rounds.
+        <b>CH9/CH18</b> = course handicap for 9 / 18 holes; <b>W</b> = White tees, <b>B</b> = Blue tees. Plus handicaps shown with “+”.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px">${cards}</div>`;
+  const e=$("#btnOverviewCsv"); if(e) e.onclick=exportTeams;
 }
 
 /* Auto-balance: pair strongest with weakest to equalize combined metric */
@@ -1390,6 +1451,7 @@ function switchView(v){
   if(v==="ghin") renderGhin();
   if(v==="anomalies") renderAnomalies();
   if(v==="teams") renderTeams();
+  if(v==="overview") renderOverview();
   if(v==="settings") renderSettings();
   if(v==="help") renderHelp();
 }
