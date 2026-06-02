@@ -314,7 +314,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.30";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.31";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -886,6 +886,8 @@ function openPlayer(id){
       </tr></thead><tbody>${rounds.map((r,idx)=>roundRow(r,idx)).join("")}</tbody></table>
     </div>
     <button class="small" id="pdAddRound" style="margin-top:8px">+ Add round</button>
+    <button class="small primary" id="pdPullGhin" style="margin-top:8px">⛳ Pull this player's scores from GHIN</button>
+    <span id="pdPullMsg" class="muted" style="margin-left:8px;font-size:12px"></span>
     <details style="margin-top:12px"><summary>Paste rounds (CSV or GHIN JSON)</summary>
       <p class="help">CSV columns: <code>date,score,rating,slope,tees,holes,type,differential</code> (header optional). Or paste a GHIN scores JSON array / golfer object.</p>
       <textarea id="pdPaste" placeholder="2026-05-20,84,70.0,132,White,18,H&#10;or GHIN JSON…"></textarea>
@@ -913,6 +915,20 @@ function roundRow(r,idx){
 }
 function bindRoundHandlers(){
   $("#pdAddRound").onclick=()=>{ $("#playerDialog")._rounds.unshift({date:"",score:"",rating:teeByName("White").r18,slope:teeByName("White").s18,tees:"White",holes:18,type:"H"}); refreshRoundsTable(); };
+  $("#pdPullGhin").onclick=async()=>{
+    const ghin=$("#pdGhin").value.trim();
+    const msg=$("#pdPullMsg"), btn=$("#pdPullGhin");
+    if(!ghin){ msg.textContent="No GHIN # on this player."; return; }
+    if(!GHIN.token){ msg.textContent="Log in first on the ⛳ Pull from GHIN tab."; return; }
+    btn.disabled=true; msg.textContent="Pulling…";
+    try{
+      const raw = await GHIN.scores(ghin);
+      const rounds = roundsFromGhinJson(raw);
+      $("#playerDialog")._rounds = rounds; refreshRoundsTable();
+      msg.textContent = rounds.length? `Pulled ${rounds.length} rounds — click Save to keep.` : "GHIN returned 0 rounds for this GHIN #.";
+    }catch(e){ msg.textContent="Failed: "+e.message; }
+    finally{ btn.disabled=false; }
+  };
   $("#pdPasteBtn").onclick=()=>{
     const txt=$("#pdPaste").value.trim(); if(!txt) return;
     const parsed=parseRoundsBlob(txt);
@@ -1351,16 +1367,21 @@ function wireGhin(){
     return added;
   }
   async function pullScores(){
-    const targets = state.players.filter(p=>p.ghinId||p.ghin);
+    const targets = state.players.filter(p=>p.ghin||p.ghinId);
     if(!targets.length){ ghinStatus({error:"No members with a GHIN id yet — load the roster first."}); return {ok:0,fail:0}; }
-    let done=0, ok=0, fail=0;
+    let done=0, ok=0, fail=0; const failed=[];
     for(const p of targets){
       ghinStatus({busy:`Pulling scores… ${++done}/${targets.length} (${esc(playerName(p.id))})`});
-      try{ p.rounds = roundsFromGhinJson(await GHIN.scores(p.ghinId||p.ghin)); ok++; save(); renderPlayers(); }
-      catch(e){ fail++; console.warn("scores failed for",playerName(p.id),e); }
+      const id = p.ghin || p.ghinId;   // GHIN number is the scores key
+      let success=false;
+      for(let attempt=0; attempt<2 && !success; attempt++){
+        try{ p.rounds = roundsFromGhinJson(await GHIN.scores(id)); ok++; success=true; save(); renderPlayers(); }
+        catch(e){ if(attempt===0){ await new Promise(r=>setTimeout(r,400)); } else { fail++; failed.push(playerName(p.id)); console.warn("scores failed for",playerName(p.id),e); } }
+      }
     }
+    if(failed.length) console.warn("[GHIN] members with no scores pulled:", failed);
     renderAll();
-    return {ok,fail};
+    return {ok,fail,failed};
   }
 
   // Single delegated click handler on the view — survives re-render and can't
