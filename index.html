@@ -151,7 +151,6 @@
               <th data-sort="ghin">GHIN #</th>
               <th data-sort="index" class="num">Index</th>
               <th data-sort="ch9" class="num" title="9-hole course handicap at selected tee">CH (9)</th>
-              <th data-sort="ch18" class="num" title="18-hole course handicap at selected tee">CH (18)</th>
               <th data-sort="rounds" class="num" title="Total rounds on file">Rounds</th>
               <th data-sort="r2026" class="num" title="Rounds posted in 2026">2026</th>
               <th data-sort="avg" class="num" title="Average score differential">Avg Diff</th>
@@ -315,7 +314,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.28";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.29";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -547,7 +546,6 @@ function renderPlayers(){
       <td class="muted">${esc(r.ghin)}</td>
       <td class="num">${fmtIndex(r.index)}</td>
       <td class="num">${fmtCH(r.ch9)}</td>
-      <td class="num">${fmtCH(r.ch18)}</td>
       <td class="num">${r.rounds}</td>
       <td class="num">${r.r2026}</td>
       <td class="num">${fmt(r.avg)}</td>
@@ -558,7 +556,7 @@ function renderPlayers(){
       <td><button class="small" data-edit="${r.p.id}">Edit</button></td>
     </tr>`;
   }).join("");
-  $("#playersBody").innerHTML = body || `<tr><td colspan="14" class="muted" style="padding:24px;text-align:center">No players yet. Use <b>⛳ Pull from GHIN</b> to load the Geneva roster, or <b>Load sample data</b> to explore.</td></tr>`;
+  $("#playersBody").innerHTML = body || `<tr><td colspan="13" class="muted" style="padding:24px;text-align:center">No players yet. Use <b>⛳ Pull from GHIN</b> to load the Geneva roster, or <b>Load sample data</b> to explore.</td></tr>`;
 }
 
 /* tiny SVG sparkline of differentials, oldest->newest (lower=better) */
@@ -743,12 +741,11 @@ function renderOverview(){
   }
   const full = state.teams.filter(t=>t[0]&&t[1]).length;
   const playerRow = p=>{
-    if(!p) return `<tr><td class="muted">— empty —</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+    if(!p) return `<tr><td class="muted">— empty —</td><td></td><td></td><td></td></tr>`;
     const m=playerMetrics(p);
     return `<tr><td><b>${esc(playerName(p.id))}</b> <span class="muted">${esc(p.ghin||"")}</span></td>
       <td class="num">${fmtIndex(m.index)}</td>
-      <td class="num">${fmtCH(ch9(m.index,white))}</td><td class="num">${fmtCH(ch9(m.index,blue))}</td>
-      <td class="num">${fmtCH(ch18(m.index,white))}</td><td class="num">${fmtCH(ch18(m.index,blue))}</td></tr>`;
+      <td class="num">${fmtCH(ch9(m.index,white))}</td><td class="num">${fmtCH(ch9(m.index,blue))}</td></tr>`;
   };
   const cards = state.teams.map((t,i)=>{
     const p1=state.players.find(x=>x.id===t[0]), p2=state.players.find(x=>x.id===t[1]);
@@ -767,9 +764,8 @@ function renderOverview(){
     return `<div class="card" style="margin:0;break-inside:avoid">
       <h3 style="margin:0 0 8px">Team ${i+1} <span class="muted" style="font-weight:400">· combined index ${combined}</span></h3>
       <table class="hcp-table" style="width:100%"><thead><tr>
-        <th>Player</th><th class="num">Index</th><th class="num" title="9-hole course handicap, White">CH9 W</th>
-        <th class="num" title="9-hole course handicap, Blue">CH9 B</th>
-        <th class="num" title="18-hole course handicap, White">CH18 W</th><th class="num" title="18-hole course handicap, Blue">CH18 B</th>
+        <th>Player</th><th class="num">Index</th><th class="num" title="9-hole course handicap, White tees">CH9 White</th>
+        <th class="num" title="9-hole course handicap, Blue tees">CH9 Blue</th>
       </tr></thead><tbody>${playerRow(p1)}${playerRow(p2)}</tbody></table>
       ${rounds}
     </div>`;
@@ -784,7 +780,7 @@ function renderOverview(){
         <button onclick="window.print()">🖨 Print</button>
       </div>
       <p class="help">Read-only summary of every pairing with playing handicaps for all four rounds.
-        <b>CH9/CH18</b> = course handicap for 9 / 18 holes; <b>W</b> = White tees, <b>B</b> = Blue tees. Plus handicaps shown with “+”.</p>
+        <b>CH9</b> = 9-hole course handicap at the White and Blue tees. Plus handicaps shown with “+”.</p>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px">${cards}</div>`;
   const e=$("#btnOverviewCsv"); if(e) e.onclick=exportTeams;
