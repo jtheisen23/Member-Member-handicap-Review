@@ -123,6 +123,7 @@
   <button data-view="anomalies">Anomaly Review</button>
   <button data-view="teams">Team Builder</button>
   <button data-view="overview">Teams Overview</button>
+  <button data-view="team-anomaly">Teams Anomaly</button>
   <button data-view="settings">Course &amp; Rules</button>
   <button data-view="help">Help</button>
 </nav>
@@ -244,6 +245,9 @@
   <!-- ============ TEAMS OVERVIEW ============ -->
   <section class="view" id="view-overview"></section>
 
+  <!-- ============ TEAMS ANOMALY ============ -->
+  <section class="view" id="view-team-anomaly"></section>
+
   <!-- ============ SETTINGS ============ -->
   <section class="view" id="view-settings">
     <div class="card">
@@ -314,7 +318,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.31";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.32";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -796,6 +800,59 @@ function renderOverview(){
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px">${cards}</div>`;
   const e=$("#btnOverviewCsv"); if(e) e.onclick=exportTeams;
+}
+
+/* =========================== RENDER: TEAMS ANOMALY =========================== */
+function renderTeamAnomalies(){
+  if(!state.teams.length){
+    $("#view-team-anomaly").innerHTML = `<div class="card"><h2>Teams Anomaly Review</h2>
+      <p class="muted">No teams yet. Create pairings in the <b>Team Builder</b> tab, then review them here.</p></div>`;
+    return;
+  }
+  const sevPill = s => s>=5?'<span class="pill r">High</span>':s>=2?'<span class="pill o">Review</span>':s>=1?'<span class="pill y">Minor</span>':'<span class="pill g">Clean</span>';
+  const playerBlock = (p,e)=>{
+    if(!p) return `<div class="muted" style="margin:6px 0">— empty —</div>`;
+    const m=e.m;
+    const flags=e.flags.filter(f=>f.sev!=="ok");
+    return `<div style="margin:8px 0 0">
+      <b>${esc(playerName(p.id))}</b>
+      <span class="muted" style="font-size:12px">Idx ${fmtIndex(m.index)} · Last5 ${fmt(m.recent)} · Low ${fmt(m.low)} · ${m.rounds2026} rds in 2026</span>
+      <div style="margin-top:3px">${flags.length?flags.map(f=>`<span class="flag ${f.sev}" title="${esc(f.why)}">${esc(f.label)}</span>`).join(" "):'<span class="flag ok">Clean</span>'}</div>
+    </div>`;
+  };
+  const rows = state.teams.map((t,i)=>{
+    const p1=state.players.find(x=>x.id===t[0]), p2=state.players.find(x=>x.id===t[1]);
+    const e1=p1?evaluate(p1):null, e2=p2?evaluate(p2):null;
+    return {i,p1,p2,e1,e2,score:(e1?e1.score:0)+(e2?e2.score:0)};
+  }).sort((a,b)=>b.score-a.score);
+  const cards = rows.map(r=>{
+    const cc=combinedCH9(r.p1,r.p2);
+    const combIdx=(r.p1&&r.p2)?fmtIndex((playerMetrics(r.p1).index||0)+(playerMetrics(r.p2).index||0)):"—";
+    return `<div class="card" style="margin:0;break-inside:avoid">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <b style="font-size:15px">Team ${r.i+1}</b> ${sevPill(r.score)}
+        <span class="spacer" style="flex:1"></span>
+        <span class="chip">Comb idx ${combIdx}</span>
+        <span class="chip">CH9 W ${fmtCH(cc.w)} / B ${fmtCH(cc.b)}</span>
+      </div>
+      ${playerBlock(r.p1,r.e1)}${playerBlock(r.p2,r.e2)}
+    </div>`;
+  }).join("");
+  const flagged = rows.filter(r=>r.score>=2).length;
+  $("#view-team-anomaly").innerHTML = `
+    <div class="card">
+      <h2>Teams Anomaly Review <span class="muted" style="font-weight:400">— ${flagged} team(s) worth a look</span></h2>
+      <p class="help">Teams ranked by the combined anomaly signal of <b>both partners</b> — surfaces pairings most likely to
+        play above their net handicap (trending-hot form, an index drifting up, big upside, or thin/stale posting). This is a
+        <b>fairness screen, not proof</b>; click a player on the Anomaly Review or Players tab to see their rounds.</p>
+      <div class="legend">
+        <span><span class="pill r">High</span> review closely</span>
+        <span><span class="pill o">Review</span> worth a look</span>
+        <span><span class="pill y">Minor</span></span>
+        <span><span class="pill g">Clean</span></span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px">${cards}</div>`;
 }
 
 /* Auto-balance: pair strongest with weakest to equalize combined metric */
@@ -1481,6 +1538,7 @@ function switchView(v){
   if(v==="anomalies") renderAnomalies();
   if(v==="teams") renderTeams();
   if(v==="overview") renderOverview();
+  if(v==="team-anomaly") renderTeamAnomalies();
   if(v==="settings") renderSettings();
   if(v==="help") renderHelp();
 }
