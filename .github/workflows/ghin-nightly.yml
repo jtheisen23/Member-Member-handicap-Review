@@ -1,0 +1,28 @@
+name: Nightly GHIN pull
+
+# Refreshes scores from GHIN every night and writes them to the shared Firebase
+# room, so the app shows up-to-date posts for everyone — no manual pull needed.
+# Also runnable on demand from the Actions tab (Run workflow).
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 09:00 UTC ≈ 4am Central — after GHIN's overnight revision
+  workflow_dispatch:
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install firebase-admin@12
+      - run: node ghin-nightly.js
+        env:
+          GHIN_EMAIL: ${{ secrets.GHIN_EMAIL }}
+          GHIN_PASSWORD: ${{ secrets.GHIN_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ROOM_ID: geneva-mm-2026
+          GHIN_CLUB_ID: "52147"
+          GHIN_ASSOC_ID: "106"

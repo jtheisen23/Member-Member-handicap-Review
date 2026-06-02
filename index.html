@@ -195,6 +195,7 @@
       <p class="help">Players are ranked by how much their scoring pattern could distort a fair match. This is a
         <b>conversation starter, not an accusation</b> — every flag has a plain-English reason. Review the underlying
         rounds before drawing conclusions.</p>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:10px"><input type="checkbox" id="anomFieldOnly"> Tournament field only</label>
       <div id="anomalyList"></div>
     </div>
   </section>
@@ -335,7 +336,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.46";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.47";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -643,7 +644,9 @@ function sparkline(diffsNewestFirst){
 
 /* =========================== RENDER: ANOMALIES =========================== */
 function renderAnomalies(){
-  const evals = state.players.map(p=>({p,...evaluate(p)})).sort((a,b)=>b.score-a.score);
+  const fieldOnly = $("#anomFieldOnly") && $("#anomFieldOnly").checked;
+  const src = fieldOnly ? state.players.filter(p=>p.tournament) : state.players;
+  const evals = src.map(p=>({p,...evaluate(p)})).sort((a,b)=>b.score-a.score);
   const sevPill = s => s>=5?'<span class="pill r">High</span>':s>=2?'<span class="pill o">Review</span>':s>=1?'<span class="pill y">Minor</span>':'<span class="pill g">Clean</span>';
   const html = evals.map(e=>{
     const name=(e.p.lastName?e.p.lastName+", ":"")+(e.p.firstName||"")||e.p.name||"(unnamed)";
@@ -1999,6 +2002,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   });
   // anomalies (delegated view button)
   $("#anomalyList").addEventListener("click",e=>{ const b=e.target.closest("[data-edit]"); if(b) openPlayer(b.dataset.edit); });
+  $("#anomFieldOnly").onchange=renderAnomalies;
   // dialogs
   $$("#playerDialog [data-close], #importDialog [data-close]").forEach(b=>b.onclick=e=>e.target.closest("dialog").close());
   $("#pdSave").onclick=savePlayer;
