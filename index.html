@@ -154,6 +154,8 @@
               <th data-sort="index" class="num">Index</th>
               <th data-sort="ch9" class="num" title="9-hole course handicap at selected tee">CH (9)</th>
               <th data-sort="rounds" class="num" title="Total rounds on file">Rounds</th>
+              <th data-sort="r9" class="num" title="9-hole rounds posted">9-hole</th>
+              <th data-sort="r18" class="num" title="18-hole rounds posted">18-hole</th>
               <th data-sort="r2026" class="num" title="Rounds posted in 2026">2026</th>
               <th data-sort="avg" class="num" title="Average score differential">Avg Diff</th>
               <th data-sort="recent" class="num" title="Average of last 5 differentials">Last 5</th>
@@ -322,7 +324,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.33";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.34";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -477,7 +479,9 @@ function playerMetrics(p){
   const lastDate = rounds.length? rounds[0].date : null;
   const stale = lastDate? daysSince(lastDate) : null;
   const rounds2026 = rounds.filter(r=>String(r.date||"").slice(0,4)==="2026").length;
-  return {rounds,diffsChrono,index,computedIndex,n,avg,recent,low,stdev,trend,lastDate,stale,last5,rounds2026};
+  const rounds9 = rounds.filter(r=>Number(r.holes)===9).length;
+  const rounds18 = rounds.filter(r=>Number(r.holes)!==9).length;   // anything not 9 counts as 18
+  return {rounds,diffsChrono,index,computedIndex,n,avg,recent,low,stdev,trend,lastDate,stale,last5,rounds2026,rounds9,rounds18};
 }
 
 /* Anomaly evaluation -> {flags:[{sev,label,why}], score} */
@@ -532,7 +536,7 @@ function renderPlayers(){
       name:(p.lastName?p.lastName+", ":"")+(p.firstName||"")||p.name||"(unnamed)",
       ghin:p.ghin||"",
       index:m.index, ch9:ch9(m.index,tee), ch18:ch18(m.index,tee),
-      rounds:m.n, r2026:m.rounds2026, avg:m.avg, recent:m.recent, low:m.low, trend:m.trend, sev:ev.score,
+      rounds:m.n, r9:m.rounds9, r18:m.rounds18, r2026:m.rounds2026, avg:m.avg, recent:m.recent, low:m.low, trend:m.trend, sev:ev.score,
       field:p.tournament?1:0
     };
   }).filter(r=> !q || r.name.toLowerCase().includes(q) || String(r.ghin).includes(q))
@@ -557,6 +561,8 @@ function renderPlayers(){
       <td class="num">${fmtIndex(r.index)}</td>
       <td class="num">${fmtCH(r.ch9)}</td>
       <td class="num">${r.rounds}</td>
+      <td class="num">${r.r9}</td>
+      <td class="num">${r.r18}</td>
       <td class="num">${r.r2026}</td>
       <td class="num">${fmt(r.avg)}</td>
       <td class="num">${fmt(r.recent)}</td>
@@ -566,7 +572,7 @@ function renderPlayers(){
       <td><button class="small" data-edit="${r.p.id}">Edit</button></td>
     </tr>`;
   }).join("");
-  $("#playersBody").innerHTML = body || `<tr><td colspan="13" class="muted" style="padding:24px;text-align:center">No players yet. Use <b>⛳ Pull from GHIN</b> to load the Geneva roster, or <b>Load sample data</b> to explore.</td></tr>`;
+  $("#playersBody").innerHTML = body || `<tr><td colspan="15" class="muted" style="padding:24px;text-align:center">No players yet. Use <b>⛳ Pull from GHIN</b> to load the Geneva roster, or <b>Load sample data</b> to explore.</td></tr>`;
 }
 
 /* tiny SVG sparkline of differentials, oldest->newest (lower=better) */
