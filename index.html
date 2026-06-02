@@ -265,6 +265,7 @@
 
   <!-- ============ SETTINGS ============ -->
   <section class="view" id="view-settings">
+    <div id="settingsLockBanner"></div>
     <div class="card">
       <h2>Course tee ratings</h2>
       <div class="info">⚠︎ These are <b>editable defaults</b> — confirm them against the official Geneva Golf Club
@@ -336,7 +337,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.48";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.49";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -1125,6 +1126,15 @@ function renderSettings(){
     tf("improving","Trending-hot gap","0.5")+
     tf("inflating","Score-rising gap","0.5")+
     tf("potentialGap","Upside gap","0.5");
+
+  // read-only for view-only (locked) devices
+  const ed = canEdit();
+  const banner=$("#settingsLockBanner");
+  if(banner) banner.innerHTML = (!ed && lockSet())
+    ? `<div class="warn" style="display:flex;align-items:center;gap:10px">🔒 Course &amp; Rules are locked by the organizer — view only.
+        <button class="small primary" id="settingsUnlockBtn">Unlock to edit</button></div>` : "";
+  if($("#settingsUnlockBtn")) $("#settingsUnlockBtn").onclick=()=>{ if(unlockPrompt()){ renderHeaderLock(); renderSettings(); } };
+  $$("#view-settings input, #view-settings select").forEach(el=>{ el.disabled=!ed; });
 }
 
 /* =========================== PLAYER DIALOG =========================== */
@@ -2045,6 +2055,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   });
   // settings inputs (delegated)
   $("#view-settings").addEventListener("input",e=>{
+    if(!canEdit()) return;   // read-only when locked
     const t=e.target;
     if(t.dataset.tee!=null){ const i=+t.dataset.tee,f=t.dataset.f; state.tees[i][f]= f==="name"?t.value:num(t.value); save(); }
     else if(t.dataset.rule){ const [r,f]=t.dataset.rule.split("."); state.rules[r][f]=num(t.value)/100; save(); }
