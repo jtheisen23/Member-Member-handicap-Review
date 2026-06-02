@@ -336,7 +336,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.47";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.48";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -454,11 +454,14 @@ function unlockPrompt(){
 /* call before any edit; returns true if allowed (prompting to unlock if needed) */
 function requireEdit(){ if(canEdit()) return true; return unlockPrompt(); }
 function renderHeaderLock(){
+  // disable data-editing controls for view-only (locked) devices
+  const dis = !canEdit();
+  ["btnAddPlayer","btnImport","btnSample","btnClear"].forEach(id=>{ const b=document.querySelector("#"+id); if(b){ b.disabled=dis; b.style.opacity=dis?".45":""; b.title=dis?"Locked by organizer":""; } });
   const el=document.querySelector("#lockChip"); if(!el) return;
   if(!lockSet()){ el.style.display="none"; return; }
   el.style.display="inline-block";
   el.textContent = canEdit() ? "🔓 Editing unlocked" : "🔒 View-only (locked)";
-  el.onclick = ()=>{ if(canEdit()){ try{ sessionStorage.removeItem("mmhr_unlocked"); }catch(e){} renderHeaderLock(); renderAll(); if(document.querySelector("#view-teams.active"))renderTeams(); } else { if(unlockPrompt()){ renderAll(); if(document.querySelector("#view-teams.active"))renderTeams(); } } };
+  el.onclick = ()=>{ if(canEdit()){ try{ sessionStorage.removeItem("mmhr_unlocked"); }catch(e){} renderHeaderLock(); renderAll(); if(document.querySelector("#view-teams.active"))renderTeams(); } else { if(unlockPrompt()){ renderHeaderLock(); renderAll(); if(document.querySelector("#view-teams.active"))renderTeams(); } } };
 }
 const fmt = (v,d=1) => v===null||v===undefined||isNaN(v) ? "—" : Number(v).toFixed(d);
 /* Golf "plus handicap" display: stored negative = a plus handicap, shown with a leading "+".
@@ -1171,6 +1174,11 @@ function openPlayer(id){
   // local working copy of rounds
   $("#playerDialog")._rounds = rounds;
   bindRoundHandlers();
+  // view-only when locked: hide Save/Delete/edit affordances
+  const ed = canEdit();
+  ["pdSave","pdAddRound","pdPullGhin","pdPasteBtn"].forEach(id=>{ const b=$("#"+id); if(b){ b.disabled=!ed; b.style.display = ed?"":"none"; } });
+  $("#pdDelete").style.display = (ed && editingId) ? "" : "none";
+  if(!ed && !$("#pdLockNote")){ const n=document.createElement("div"); n.id="pdLockNote"; n.className="warn"; n.style.margin="0 0 4px"; n.textContent="🔒 View-only — locked by the organizer."; $("#pdBody").prepend(n); }
   $("#playerDialog").showModal();
 }
 function roundRow(r,idx){
@@ -1190,6 +1198,7 @@ function roundRow(r,idx){
 function bindRoundHandlers(){
   $("#pdAddRound").onclick=()=>{ $("#playerDialog")._rounds.unshift({date:"",score:"",rating:teeByName("White").r18,slope:teeByName("White").s18,tees:"White",holes:18,type:"H"}); refreshRoundsTable(); };
   $("#pdPullGhin").onclick=async()=>{
+    if(!requireEdit()) return;
     const ghin=$("#pdGhin").value.trim();
     const msg=$("#pdPullMsg"), btn=$("#pdPullGhin");
     if(!ghin){ msg.textContent="No GHIN # on this player."; return; }
@@ -1979,15 +1988,15 @@ document.addEventListener("DOMContentLoaded",()=>{
   $("#tabs").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b) switchView(b.dataset.view); });
   // header buttons
   $("#btnPullGhin").onclick=()=>switchView("ghin");
-  $("#btnSample").onclick=loadSample;
-  $("#btnImport").onclick=openImport;
+  $("#btnSample").onclick=()=>{ if(!requireEdit())return; loadSample(); };
+  $("#btnImport").onclick=()=>{ if(!requireEdit())return; openImport(); };
   $("#btnExport").onclick=exportBackup;
-  $("#btnClear").onclick=()=>{ if(confirm("Delete ALL players, teams and reset settings? This cannot be undone.")){ state=DEFAULT_STATE(); save(); renderAll(); switchView("players"); } };
+  $("#btnClear").onclick=()=>{ if(!requireEdit())return; if(confirm("Delete ALL players, teams and reset settings? This cannot be undone.")){ state=DEFAULT_STATE(); save(); renderAll(); switchView("players"); } };
   // players table
   $("#playerSearch").oninput=renderPlayers;
   $("#teeFilter").onchange=renderPlayers;
   $("#fieldOnly").onchange=renderPlayers;
-  $("#btnAddPlayer").onclick=()=>openPlayer(null);
+  $("#btnAddPlayer").onclick=()=>{ if(!requireEdit())return; openPlayer(null); };
   // toggle tournament-field flag (don't open the dialog)
   $("#playersTable").addEventListener("change",e=>{
     const cb=e.target.closest("[data-tourney]"); if(!cb) return;
@@ -2006,7 +2015,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   // dialogs
   $$("#playerDialog [data-close], #importDialog [data-close]").forEach(b=>b.onclick=e=>e.target.closest("dialog").close());
   $("#pdSave").onclick=savePlayer;
-  $("#pdDelete").onclick=()=>{ if(editingId && confirm("Delete this player?")){ state.players=state.players.filter(x=>x.id!==editingId); state.teams=state.teams.map(t=>t.map(id=>id===editingId?null:id)); save(); $("#playerDialog").close(); renderAll(); } };
+  $("#pdDelete").onclick=()=>{ if(!requireEdit())return; if(editingId && confirm("Delete this player?")){ state.players=state.players.filter(x=>x.id!==editingId); state.teams=state.teams.map(t=>t.map(id=>id===editingId?null:id)); save(); $("#playerDialog").close(); renderAll(); } };
   // teams
   $("#btnAutoBalance").onclick=()=>{ if(!requireEdit())return; autoBalance(); };
   $("#btnClearTeams").onclick=()=>{ if(!requireEdit())return; if(confirm("Clear all pairings?")){ state.teams=[]; save(); renderTeams(); } };
