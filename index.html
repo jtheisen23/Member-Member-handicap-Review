@@ -311,7 +311,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.26";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.27";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -394,6 +394,10 @@ const parseIndex = v => {
   return n;
 };
 const fmt = (v,d=1) => v===null||v===undefined||isNaN(v) ? "—" : Number(v).toFixed(d);
+/* Golf "plus handicap" display: stored negative = a plus handicap, shown with a leading "+".
+   fmtIndex for handicap index (1 decimal); fmtCH for whole-number course handicaps. */
+const fmtIndex = v => v===null||v===undefined||isNaN(v) ? "—" : (v<0 ? "+"+Math.abs(v).toFixed(1) : Number(v).toFixed(1));
+const fmtCH = v => v===null||v===undefined||isNaN(v) ? "—" : (v<0 ? "+"+Math.abs(v) : String(v));
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
 function daysSince(dateStr){ const t=Date.parse(dateStr); if(isNaN(t)) return null; return Math.floor((Date.now()-t)/86400000); }
 
@@ -478,11 +482,11 @@ function evaluate(p){
     if(m.stdev > T.volatility)
       add("med","Inconsistent", `High scoring spread (σ=${fmt(m.stdev)}). Volatile scoring widens net-score swings.`);
     if(m.index!=null && m.recent!=null && (m.index - m.recent) > T.improving)
-      add("high","Trending hot", `Last-5 differential (${fmt(m.recent)}) is ${fmt(m.index-m.recent)} better than index (${fmt(m.index)}) — playing above their number.`);
+      add("high","Trending hot", `Last-5 differential (${fmt(m.recent)}) is ${fmt(m.index-m.recent)} better than index (${fmtIndex(m.index)}) — playing above their number.`);
     if(m.trend!=null && m.trend > T.inflating)
       add("high","Scores rising", `Recent differentials average ${fmt(m.trend)} higher than earlier ones — index drifting up before the event.`);
     if(m.index!=null && m.low!=null && (m.index - m.low) > (T.potentialGap+5))
-      add("med","Big upside", `Best round (${fmt(m.low)}) is well below index (${fmt(m.index)}) — capable of a low net on a good day.`);
+      add("med","Big upside", `Best round (${fmt(m.low)}) is well below index (${fmtIndex(m.index)}) — capable of a low net on a good day.`);
     // posting variety checks
     const holes = new Set(m.rounds.map(r=>Number(r.holes)||18));
     const nine = m.rounds.filter(r=>Number(r.holes)===9).length;
@@ -492,7 +496,7 @@ function evaluate(p){
     const tourneys = m.rounds.filter(r=>/^(t|c)$/i.test(String(r.type||"")));
     // index vs computed mismatch
     if(m.computedIndex!=null && p.index!=null && Math.abs(Number(p.index)-m.computedIndex)>2.5)
-      add("med","Index mismatch", `Stored index (${fmt(p.index)}) differs from one computed from posted rounds (${fmt(m.computedIndex)}).`);
+      add("med","Index mismatch", `Stored index (${fmtIndex(p.index)}) differs from one computed from posted rounds (${fmtIndex(m.computedIndex)}).`);
   }
   if(flags.length===0) add("ok","Clean","Nothing unusual in posting or scoring.");
 
@@ -537,9 +541,9 @@ function renderPlayers(){
       <td class="num"><input type="checkbox" data-tourney="${r.p.id}" ${r.field?"checked":""} title="In the tournament field"></td>
       <td><b>${esc(r.name)}</b></td>
       <td class="muted">${esc(r.ghin)}</td>
-      <td class="num">${fmt(r.index)}</td>
-      <td class="num">${r.ch9==null?"—":r.ch9}</td>
-      <td class="num">${r.ch18==null?"—":r.ch18}</td>
+      <td class="num">${fmtIndex(r.index)}</td>
+      <td class="num">${fmtCH(r.ch9)}</td>
+      <td class="num">${fmtCH(r.ch18)}</td>
       <td class="num">${r.rounds}</td>
       <td class="num">${r.r2026}</td>
       <td class="num">${fmt(r.avg)}</td>
@@ -581,7 +585,7 @@ function renderAnomalies(){
         <span class="muted">${esc(e.p.ghin||"")}</span>
         ${sevPill(e.score)}
         <span class="spacer" style="flex:1"></span>
-        <span class="chip">Index ${fmt(m.index)}</span>
+        <span class="chip">Index ${fmtIndex(m.index)}</span>
         <span class="chip">${m.n} rounds</span>
         <span class="chip">Avg ${fmt(m.avg)}</span>
         <span class="chip">Last5 ${fmt(m.recent)}</span>
@@ -666,7 +670,7 @@ function renderTeams(){
   const pool = state.players.filter(p=>!assigned.has(p.id) && (!hasField || p.tournament));
   $("#poolList").innerHTML = pool.length? pool.map(p=>{
     const m=playerMetrics(p);
-    return `<div class="team-slot"><span><b>${esc(playerName(p.id))}</b> <span class="muted">Idx ${fmt(m.index)}</span></span>
+    return `<div class="team-slot"><span><b>${esc(playerName(p.id))}</b> <span class="muted">Idx ${fmtIndex(m.index)}</span></span>
       <select data-assign="${p.id}"><option value="">Assign to…</option><option value="new">➕ New team</option>${
         state.teams.map((t,i)=>`<option value="${i}" ${t.filter(Boolean).length>=2?'disabled':''}>Team ${i+1}${t.filter(Boolean).length>=2?' (full)':''}</option>`).join("")
       }</select></div>`;
@@ -675,7 +679,7 @@ function renderTeams(){
   // pairing-picker dropdowns (unassigned players)
   const opts = `<option value="">— player —</option>`+pool
     .slice().sort((a,b)=>playerName(a.id).localeCompare(playerName(b.id)))
-    .map(p=>`<option value="${p.id}">${esc(playerName(p.id))} (${fmt(playerMetrics(p).index)})</option>`).join("");
+    .map(p=>`<option value="${p.id}">${esc(playerName(p.id))} (${fmtIndex(playerMetrics(p).index)})</option>`).join("");
   if($("#pairA")) $("#pairA").innerHTML = opts;
   if($("#pairB")) $("#pairB").innerHTML = opts;
 
@@ -686,20 +690,20 @@ function renderTeams(){
     if(p1&&p2){
       const h=teamHandicaps(p1,p2);
       alloc=`<table class="hcp-table" style="margin-top:6px"><tbody>
-        <tr><td><b>R1 Scramble</b> (White)</td><td class="num">Team ${h.r1??"—"}</td></tr>
-        <tr><td><b>R2 Mod-Alt</b> (Blue)</td><td class="num">Team ${h.r2??"—"}</td></tr>
-        <tr><td><b>R3 Best Ball</b> (White)</td><td class="num">${playerName(p1.id).split(",")[0]} ${h.r3a??"—"} / ${playerName(p2.id).split(",")[0]} ${h.r3b??"—"}</td></tr>
-        <tr><td><b>R4 Total</b> (Blue)</td><td class="num">${playerName(p1.id).split(",")[0]} ${h.r4a??"—"} / ${playerName(p2.id).split(",")[0]} ${h.r4b??"—"}</td></tr>
+        <tr><td><b>R1 Scramble</b> (White)</td><td class="num">Team ${fmtCH(h.r1)}</td></tr>
+        <tr><td><b>R2 Mod-Alt</b> (Blue)</td><td class="num">Team ${fmtCH(h.r2)}</td></tr>
+        <tr><td><b>R3 Best Ball</b> (White)</td><td class="num">${playerName(p1.id).split(",")[0]} ${fmtCH(h.r3a)} / ${playerName(p2.id).split(",")[0]} ${fmtCH(h.r3b)}</td></tr>
+        <tr><td><b>R4 Total</b> (Blue)</td><td class="num">${playerName(p1.id).split(",")[0]} ${fmtCH(h.r4a)} / ${playerName(p2.id).split(",")[0]} ${fmtCH(h.r4b)}</td></tr>
       </tbody></table>`;
     }
     const slot=(idx,id)=>{
       const m=id?playerMetrics(state.players.find(x=>x.id===id)):null;
       return `<div class="team-slot">
-        <span>${id?`<b>${esc(playerName(id))}</b> <span class="muted">Idx ${fmt(m.index)}</span>`:'<span class="muted">— empty —</span>'}</span>
+        <span>${id?`<b>${esc(playerName(id))}</b> <span class="muted">Idx ${fmtIndex(m.index)}</span>`:'<span class="muted">— empty —</span>'}</span>
         ${id?`<button class="small" data-remove="${i}:${idx}">remove</button>`:''}
       </div>`;
     };
-    const combined = (p1&&p2)?fmt((playerMetrics(p1).index||0)+(playerMetrics(p2).index||0)):"—";
+    const combined = (p1&&p2)?fmtIndex((playerMetrics(p1).index||0)+(playerMetrics(p2).index||0)):"—";
     return `<div class="team-card">
       <h4>Team ${i+1} <span class="muted" style="font-weight:400">· combined index ${combined}</span>
         <button class="small" data-deleteteam="${i}" style="float:right">✕</button></h4>
@@ -791,7 +795,7 @@ function openPlayer(id){
       <div class="stat"><div class="k">Avg differential</div><div class="v">${fmt(ev.m.avg)}</div></div>
       <div class="stat"><div class="k">Last 5</div><div class="v">${fmt(ev.m.recent)}</div></div>
       <div class="stat"><div class="k">Low (potential)</div><div class="v">${fmt(ev.m.low)}</div></div>
-      <div class="stat"><div class="k">Computed index</div><div class="v">${fmt(ev.m.computedIndex)}</div></div>
+      <div class="stat"><div class="k">Computed index</div><div class="v">${fmtIndex(ev.m.computedIndex)}</div></div>
       <div class="stat"><div class="k">Last posted</div><div class="v" style="font-size:14px">${ev.m.lastDate||"—"}${ev.m.stale!=null?` <span class="muted">(${ev.m.stale}d)</span>`:""}</div></div>
     </div>
     <div>${ev.flags.map(f=>`<span class="flag ${f.sev}" title="${esc(f.why)}">${esc(f.label)}</span>`).join(" ")}</div>` : "";
@@ -801,7 +805,7 @@ function openPlayer(id){
       <div class="field"><label>First name</label><input id="pdFirst" value="${esc(p.firstName)}"></div>
       <div class="field"><label>Last name</label><input id="pdLast" value="${esc(p.lastName)}"></div>
       <div class="field"><label>GHIN #</label><input id="pdGhin" value="${esc(p.ghin)}"></div>
-      <div class="field"><label>Handicap Index</label><input id="pdIndex" type="number" step="0.1" value="${p.index??""}" placeholder="auto"></div>
+      <div class="field"><label>Handicap Index <span class="muted" style="font-weight:400">(use + for plus, e.g. +2.0)</span></label><input id="pdIndex" type="text" value="${p.index==null?"":fmtIndex(p.index)}" placeholder="auto"></div>
       <div class="field"><label>Gender</label><select id="pdGender"><option value="M" ${p.gender!=="F"?"selected":""}>M</option><option value="F" ${p.gender==="F"?"selected":""}>F</option></select></div>
     </div>
     ${statBox}
@@ -865,7 +869,7 @@ function savePlayer(){
   const r=$("#playerDialog")._rounds.filter(x=>x.date||x.score);
   const data={
     firstName:$("#pdFirst").value.trim(), lastName:$("#pdLast").value.trim(),
-    ghin:$("#pdGhin").value.trim(), index:num($("#pdIndex").value), gender:$("#pdGender").value,
+    ghin:$("#pdGhin").value.trim(), index:parseIndex($("#pdIndex").value), gender:$("#pdGender").value,
     rounds:r
   };
   if(editingId){ Object.assign(state.players.find(x=>x.id===editingId), data); }
@@ -1337,7 +1341,7 @@ function exportBackup(){
 function exportTeams(){
   const lines=[["Team","Player","GHIN","Index","CH9_White","CH9_Blue"]];
   state.teams.forEach((t,i)=>t.forEach(id=>{ if(!id)return; const p=state.players.find(x=>x.id===id); const m=playerMetrics(p);
-    lines.push([i+1,playerName(id),p.ghin||"",fmt(m.index),ch9(m.index,teeByName("White"))??"",ch9(m.index,teeByName("Blue"))??""]); }));
+    lines.push([i+1,playerName(id),p.ghin||"",fmtIndex(m.index),fmtCH(ch9(m.index,teeByName("White"))),fmtCH(ch9(m.index,teeByName("Blue")))]); }));
   const csv=lines.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   downloadBlob(new Blob([csv],{type:"text/csv"}),"teams.csv");
 }
