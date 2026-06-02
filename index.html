@@ -324,7 +324,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.34";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.35";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -876,9 +876,14 @@ function renderWatch(){
   const end   = w.end   || "2026-06-11";
   const hasBase = w.baseline && w.baseline.players;
 
+  // scope the watch to players who are ON A TEAM (the tournament field)
+  const teamIds = new Set();
+  state.teams.forEach(t=>t.forEach(id=>id&&teamIds.add(id)));
+  const watchPlayers = state.players.filter(p=>teamIds.has(p.id));
+
   // collect every posted round whose date falls in the window
   const posts=[];
-  state.players.forEach(p=>{
+  watchPlayers.forEach(p=>{
     const idx = playerMetrics(p).index;
     (p.rounds||[]).forEach(r=>{
       const d=String(r.date||"").slice(0,10);
@@ -892,7 +897,7 @@ function renderWatch(){
   // index movement vs baseline
   let moveRows="";
   if(hasBase){
-    const rows = state.players.map(p=>{
+    const rows = watchPlayers.map(p=>{
       const b=w.baseline.players[p.id];
       if(!b) return null;
       const cur=playerMetrics(p);
@@ -923,10 +928,10 @@ function renderWatch(){
   $("#view-watch").innerHTML = `
     <div class="card">
       <h2>Posting Watch <span class="muted" style="font-weight:400">— pre-tournament index monitoring</span></h2>
-      <p class="help">Logs every score posted in your window and tracks index movement so you can catch anyone
-        manipulating their handicap before play. <b>How to use:</b> click <b>Capture baseline now</b> today, then each day
-        re-pull from GHIN (⛳ tab → Pull everyone, or the button below) and check back here. Indexes drifting <b>up</b>
-        before the event are the red flag.</p>
+      <p class="help">Tracks only your <b>tournament field — the ${watchPlayers.length} player(s) currently on a team</b>.
+        Click <b>Capture baseline now</b> today, then each day re-pull from GHIN (the button below) and check back. Indexes
+        drifting <b>up</b> before the event are the red flag. Add or change pairings in <b>Team Builder</b> to adjust who's watched.</p>
+      ${watchPlayers.length?"":`<div class="warn">No players on a team yet — create pairings in <b>Team Builder</b> and they'll appear here.</div>`}
       <div class="row">
         <div class="field"><label>Watch from</label><input type="date" id="watchStart" value="${start}"></div>
         <div class="field"><label>through</label><input type="date" id="watchEnd" value="${end}"></div>
@@ -935,7 +940,7 @@ function renderWatch(){
       </div>
       <div id="watchStatus" style="margin-top:8px">${hasBase
         ? `<div class="ok-box">Baseline captured ${esc((w.baseline.capturedAt||"").replace("T"," ").slice(0,16))} — ${Object.keys(w.baseline.players).length} players snapshotted.</div>`
-        : `<div class="warn">No baseline yet — click “Capture baseline now” to record everyone's current index as the reference point.</div>`}</div>
+        : `<div class="warn">No baseline yet — click “Capture baseline now” to record the field's current indexes as the reference point.</div>`}</div>
     </div>
 
     ${hasBase?`<div class="card">
@@ -960,21 +965,22 @@ function renderWatch(){
   $("#watchEnd").onchange=e=>{ state.watch.end=e.target.value; save(); renderWatch(); };
   $("#watchBaseline").onclick=()=>{
     const players={};
-    state.players.forEach(p=>{ const m=playerMetrics(p); players[p.id]={index:m.index, rounds:m.n, name:playerName(p.id)}; });
+    watchPlayers.forEach(p=>{ const m=playerMetrics(p); players[p.id]={index:m.index, rounds:m.n, name:playerName(p.id)}; });
     state.watch.baseline={ capturedAt:new Date().toISOString(), players }; save(); renderWatch();
   };
   $("#watchRefresh").onclick=async()=>{
     if(!GHIN.token){ $("#watchStatus").innerHTML=`<div class="warn">Log in first on the ⛳ Pull from GHIN tab, then try again.</div>`; return; }
+    if(!watchPlayers.length){ $("#watchStatus").innerHTML=`<div class="warn">No team players to update — create pairings in Team Builder first.</div>`; return; }
     const btn=$("#watchRefresh"); btn.disabled=true;
-    const r=await ghinRefreshScores(msg=>{ $("#watchStatus").innerHTML=`<div class="info">${esc(msg)}</div>`; });
+    const r=await ghinRefreshScores(msg=>{ $("#watchStatus").innerHTML=`<div class="info">${esc(msg)}</div>`; }, watchPlayers);
     btn.disabled=false; renderWatch();
     $("#watchStatus").innerHTML=`<div class="ok-box">Updated ${r.ok} player(s)${r.fail?`, ${r.fail} failed`:""}. New posts in the window appear below.</div>`;
   };
 }
 
-/* Refresh scores for all currently-loaded players (used by Posting Watch). */
-async function ghinRefreshScores(statusFn){
-  const targets = state.players.filter(p=>p.ghin||p.ghinId);
+/* Refresh scores for the given players (or all loaded). Used by Posting Watch. */
+async function ghinRefreshScores(statusFn, playersList){
+  const targets = (playersList || state.players).filter(p=>p.ghin||p.ghinId);
   let ok=0, fail=0, done=0;
   for(const p of targets){
     if(statusFn) statusFn(`Updating scores… ${++done}/${targets.length} (${playerName(p.id)})`);
