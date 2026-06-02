@@ -337,7 +337,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.49";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.50";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -369,7 +369,7 @@ const DEFAULT_STATE = () => ({
     // percentages are decimals (0.35 = 35%)
     r1:{ name:"Scramble",               tee:"White", lowPct:0.35, highPct:0.15, mult:0.50 },
     r2:{ name:"Modified Alternate Shot", tee:"Blue",  teamPct:0.50 },
-    r3:{ name:"Partner's Best Ball",     tee:"White", indivPct:0.90 },
+    r3:{ name:"Partner's Best Ball",     tee:"White", indivPct:0.50 },
     r4:{ name:"Total Score of Partners", tee:"Blue",  indivPct:1.00 }
   },
   thresholds: {
@@ -418,6 +418,7 @@ function migrate(s){
   if(!s.ghin.assocId) s.ghin.assocId=d.ghin.assocId;     // ensure Geneva association (106)
   s.watch=s.watch||{start:"",end:"",baseline:null};
   s.admin=s.admin||{passHash:null};
+  if(s.rules&&s.rules.r3&&s.rules.r3.indivPct===0.9) s.rules.r3.indivPct=0.5;  // best-ball updated to 50% of 18-hole ÷2
   s.players=s.players||[]; s.teams=s.teams||[];
   return s;
 }
@@ -505,7 +506,8 @@ function computeIndex(diffs){
 
 /* Course handicaps */
 function ch18(index, tee){ if(index==null) return null; return Math.round(index*tee.s18/113 + (tee.r18-tee.par18)); }
-function ch9(index, tee){ if(index==null) return null; return Math.round((index/2)*tee.s9/113 + (tee.r9-tee.par9)); }
+// 9-hole course handicap = full 18-hole course handicap ÷ 2 (per committee rules).
+function ch9(index, tee){ const c=ch18(index,tee); return c==null?null:Math.round(c/2); }
 
 /* Per-player computed metrics */
 function playerMetrics(p){
@@ -680,20 +682,21 @@ function teamHandicaps(p1,p2){
   const white=teeByName(state.rules.r1.tee), blue=teeByName(state.rules.r2.tee);
   const i1=playerMetrics(p1).index, i2=playerMetrics(p2).index;
   const out={};
-  // R1 scramble: (lowPct*lowCH18 + highPct*highCH18) * mult  (White, 18-hole CHs)
-  const w1=ch18(i1,teeByName(state.rules.r1.tee)), w2=ch18(i2,teeByName(state.rules.r1.tee));
+  // All rounds start from the FULL 18-hole course handicap (integer), then apply
+  // the round's % and ÷2 for 9 holes, rounding .5 up at the end.
+  const w1=ch18(i1,teeByName(state.rules.r1.tee)), w2=ch18(i2,teeByName(state.rules.r1.tee)); // White 18-hole
+  const b1=ch18(i1,teeByName(state.rules.r2.tee)), b2=ch18(i2,teeByName(state.rules.r2.tee)); // Blue 18-hole
+  // R1 Scramble (White): (35% of low + 15% of high), then ×50%
   if(w1!=null&&w2!=null){ const lo=Math.min(w1,w2),hi=Math.max(w1,w2);
     out.r1=Math.round((state.rules.r1.lowPct*lo + state.rules.r1.highPct*hi)*state.rules.r1.mult); }
-  // R2 mod alt: teamPct * (CH9blue p1 + CH9blue p2)
-  const b1n=ch9(i1,teeByName(state.rules.r2.tee)), b2n=ch9(i2,teeByName(state.rules.r2.tee));
-  if(b1n!=null&&b2n!=null) out.r2=Math.round(state.rules.r2.teamPct*(b1n+b2n));
-  // R3 best ball: indivPct * CH9 white each
-  const w1n=ch9(i1,teeByName(state.rules.r3.tee)), w2n=ch9(i2,teeByName(state.rules.r3.tee));
-  if(w1n!=null) out.r3a=Math.round(state.rules.r3.indivPct*w1n);
-  if(w2n!=null) out.r3b=Math.round(state.rules.r3.indivPct*w2n);
-  // R4 total: indivPct * CH9 blue each
-  if(b1n!=null) out.r4a=Math.round(state.rules.r4.indivPct*b1n);
-  if(b2n!=null) out.r4b=Math.round(state.rules.r4.indivPct*b2n);
+  // R2 Mod-Alt (Blue): team total 18-hole × 50% ÷ 2
+  if(b1!=null&&b2!=null) out.r2=Math.round((b1+b2)*state.rules.r2.teamPct/2);
+  // R3 Best Ball (White), per player: 18-hole × 50% ÷ 2
+  if(w1!=null) out.r3a=Math.round(w1*state.rules.r3.indivPct/2);
+  if(w2!=null) out.r3b=Math.round(w2*state.rules.r3.indivPct/2);
+  // R4 Total (Blue), per player: 18-hole × 100% ÷ 2
+  if(b1!=null) out.r4a=Math.round(b1*state.rules.r4.indivPct/2);
+  if(b2!=null) out.r4b=Math.round(b2*state.rules.r4.indivPct/2);
   out.i1=i1; out.i2=i2;
   return out;
 }
@@ -1107,15 +1110,15 @@ function renderSettings(){
   const r=state.rules;
   $("#rulesBody").innerHTML = `
     <tr><td><b>Round 1</b></td><td>${esc(r.r1.name)}</td><td>${esc(r.r1.tee)}</td>
-      <td><input type="number" step="1" value="${r.r1.lowPct*100}" data-rule="r1.lowPct" style="width:60px">% low +
-          <input type="number" step="1" value="${r.r1.highPct*100}" data-rule="r1.highPct" style="width:60px">% high, ×
+      <td><input type="number" step="1" value="${r.r1.lowPct*100}" data-rule="r1.lowPct" style="width:60px">% of low 18-hole +
+          <input type="number" step="1" value="${r.r1.highPct*100}" data-rule="r1.highPct" style="width:60px">% of high, ×
           <input type="number" step="1" value="${r.r1.mult*100}" data-rule="r1.mult" style="width:60px">%</td></tr>
     <tr><td><b>Round 2</b></td><td>${esc(r.r2.name)}</td><td>${esc(r.r2.tee)}</td>
-      <td><input type="number" step="1" value="${r.r2.teamPct*100}" data-rule="r2.teamPct" style="width:60px">% of team 9-hole total</td></tr>
+      <td><input type="number" step="1" value="${r.r2.teamPct*100}" data-rule="r2.teamPct" style="width:60px">% of team's total 18-hole, ÷ 2</td></tr>
     <tr><td><b>Round 3</b></td><td>${esc(r.r3.name)}</td><td>${esc(r.r3.tee)}</td>
-      <td><input type="number" step="1" value="${r.r3.indivPct*100}" data-rule="r3.indivPct" style="width:60px">% of each 9-hole CH</td></tr>
+      <td><input type="number" step="1" value="${r.r3.indivPct*100}" data-rule="r3.indivPct" style="width:60px">% of each player's 18-hole, ÷ 2</td></tr>
     <tr><td><b>Round 4</b></td><td>${esc(r.r4.name)}</td><td>${esc(r.r4.tee)}</td>
-      <td><input type="number" step="1" value="${r.r4.indivPct*100}" data-rule="r4.indivPct" style="width:60px">% of each 9-hole CH</td></tr>`;
+      <td><input type="number" step="1" value="${r.r4.indivPct*100}" data-rule="r4.indivPct" style="width:60px">% of each player's 18-hole, ÷ 2</td></tr>`;
 
   const T=state.thresholds;
   const tf=(k,label,step="1")=>`<div class="field"><label>${label}</label><input type="number" step="${step}" value="${T[k]}" data-thr="${k}"></div>`;
