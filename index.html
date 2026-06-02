@@ -286,7 +286,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.21";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.22";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -1263,12 +1263,14 @@ function wireGhin(){
     const ln = me.last_name || "a";
     const gid = GHIN.golferId || me.ghin || me.golfer_id || "";
     const tests = [
-      {label:"A search.json last_name+state",     path:"/golfers/search.json", params:{last_name:ln, state:"IL", per_page:25, page:1}},
-      {label:"B search.json last_name+country",   path:"/golfers/search.json", params:{last_name:ln, country:"USA", per_page:25, page:1}},
-      {label:"C search.json golfer_id",           path:"/golfers/search.json", params:{golfer_id:gid, per_page:25, page:1}},
-      {label:"D search.json club_id+association", path:"/golfers/search.json", params:{club_id:state.ghin.clubId, association_id:state.ghin.assocId, status:"Active", per_page:100, page:1}},
-      {label:"E golfers.json global_search+term", path:"/golfers.json", params:{global_search:true, search:ln, club_id:state.ghin.clubId, per_page:25, page:1}},
-      {label:"F followed_golfers/{id}",           path:`/followed_golfers/${gid}.json`, params:{}}
+      {label:"G clubs/{id}/golfers.json",            path:`/clubs/${state.ghin.clubId}/golfers.json`, params:{per_page:100, page:1}},
+      {label:"H club/{id}/golfers.json",             path:`/club/${state.ghin.clubId}/golfers.json`, params:{per_page:100, page:1}},
+      {label:"I clubs/{id}.json",                    path:`/clubs/${state.ghin.clubId}.json`, params:{}},
+      {label:"J search.json club+assoc gs=false",    path:"/golfers/search.json", params:{club_id:state.ghin.clubId, association_id:state.ghin.assocId, global_search:false, per_page:100, page:1}},
+      {label:"K search.json club+assoc gs=true",     path:"/golfers/search.json", params:{club_id:state.ghin.clubId, association_id:state.ghin.assocId, global_search:true, per_page:100, page:1}},
+      {label:"L golfers.json club+assoc gs=false",   path:"/golfers.json", params:{club_id:state.ghin.clubId, association_id:state.ghin.assocId, global_search:false, per_page:100, page:1}},
+      {label:"M associations/{a}/clubs/{c}/golfers", path:`/associations/${state.ghin.assocId}/clubs/${state.ghin.clubId}/golfers.json`, params:{per_page:100, page:1}},
+      {label:"N club_golfers.json?club_id",          path:"/club_golfers.json", params:{club_id:state.ghin.clubId, per_page:100, page:1}}
     ];
     let report = `Build ${APP_VERSION} | token ${(state.ghin.appToken||"").slice(0,6)}…\n`+
                  `golferId=${gid||"(none)"} | me.last_name=${me.last_name||"(none)"} | clubId=${state.ghin.clubId} | assoc=${state.ghin.assocId}\n\n`;
