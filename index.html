@@ -334,7 +334,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.42";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.43";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -602,10 +602,11 @@ function renderPlayers(){
   });
 
   const sevDot = s => { const c = s>=5?"var(--flag-high)":s>=2?"var(--flag-med)":s>=1?"var(--flag-low)":"var(--ok)"; return `<span class="sev-dot" style="background:${c}"></span>`; };
+  const editable = canEdit();
   const body = rows.map(r=>{
     const topFlags = r.ev.flags.filter(f=>f.sev!=="ok").slice(0,2).map(f=>`<span class="flag ${f.sev}">${esc(f.label)}</span>`).join("");
     return `<tr data-id="${r.p.id}">
-      <td class="num"><input type="checkbox" data-tourney="${r.p.id}" ${r.field?"checked":""} title="In the tournament field"></td>
+      <td class="num"><input type="checkbox" data-tourney="${r.p.id}" ${r.field?"checked":""} ${editable?"":"disabled"} title="${editable?"In the tournament field":"Locked by organizer"}"></td>
       <td><b>${esc(r.name)}</b></td>
       <td class="muted">${esc(r.ghin)}</td>
       <td class="num">${fmtIndex(r.index)}</td>
@@ -1220,6 +1221,7 @@ function refreshRoundsHandlersOnly(){
   });
 }
 function savePlayer(){
+  if(!requireEdit()) return;
   const r=$("#playerDialog")._rounds.filter(x=>x.date||x.score);
   const data={
     firstName:$("#pdFirst").value.trim(), lastName:$("#pdLast").value.trim(),
@@ -1926,6 +1928,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   // toggle tournament-field flag (don't open the dialog)
   $("#playersTable").addEventListener("change",e=>{
     const cb=e.target.closest("[data-tourney]"); if(!cb) return;
+    if(!requireEdit()){ cb.checked=!cb.checked; return; }
     const p=state.players.find(x=>x.id===cb.dataset.tourney); if(p){ p.tournament=cb.checked; save(); renderPlayers(); }
   });
   $("#playersTable").addEventListener("click",e=>{
