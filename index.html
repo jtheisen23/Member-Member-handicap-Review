@@ -136,6 +136,8 @@
           <option value="white">Show White-tee course handicaps</option>
           <option value="blue">Show Blue-tee course handicaps</option>
         </select>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px"><input type="checkbox" id="fieldOnly"> Tournament field only</label>
+        <span id="fieldCount" class="muted" style="font-size:12px"></span>
         <span class="spacer" style="flex:1"></span>
         <button class="primary" id="btnAddPlayer">+ Add player</button>
       </div>
@@ -143,12 +145,14 @@
         <table id="playersTable">
           <thead>
             <tr>
+              <th data-sort="field" class="num" title="In the tournament field?">Field</th>
               <th data-sort="name">Player</th>
               <th data-sort="ghin">GHIN #</th>
               <th data-sort="index" class="num">Index</th>
               <th data-sort="ch9" class="num" title="9-hole course handicap at selected tee">CH (9)</th>
               <th data-sort="ch18" class="num" title="18-hole course handicap at selected tee">CH (18)</th>
-              <th data-sort="rounds" class="num">Rounds</th>
+              <th data-sort="rounds" class="num" title="Total rounds on file">Rounds</th>
+              <th data-sort="r2026" class="num" title="Rounds posted in 2026">2026</th>
               <th data-sort="avg" class="num" title="Average score differential">Avg Diff</th>
               <th data-sort="recent" class="num" title="Average of last 5 differentials">Last 5</th>
               <th data-sort="low" class="num" title="Lowest differential = scoring potential">Low</th>
@@ -286,7 +290,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.23";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.24";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -434,7 +438,8 @@ function playerMetrics(p){
   }
   const lastDate = rounds.length? rounds[0].date : null;
   const stale = lastDate? daysSince(lastDate) : null;
-  return {rounds,diffsChrono,index,computedIndex,n,avg,recent,low,stdev,trend,lastDate,stale,last5};
+  const rounds2026 = rounds.filter(r=>String(r.date||"").slice(0,4)==="2026").length;
+  return {rounds,diffsChrono,index,computedIndex,n,avg,recent,low,stdev,trend,lastDate,stale,last5,rounds2026};
 }
 
 /* Anomaly evaluation -> {flags:[{sev,label,why}], score} */
@@ -480,6 +485,7 @@ let sortKey="sev", sortDir=-1;
 function renderPlayers(){
   const tee = teeByName($("#teeFilter").value);
   const q = ($("#playerSearch").value||"").toLowerCase().trim();
+  const fieldOnly = $("#fieldOnly") && $("#fieldOnly").checked;
   const rows = state.players.map(p=>{
     const ev = evaluate(p);
     const m = ev.m;
@@ -488,9 +494,13 @@ function renderPlayers(){
       name:(p.lastName?p.lastName+", ":"")+(p.firstName||"")||p.name||"(unnamed)",
       ghin:p.ghin||"",
       index:m.index, ch9:ch9(m.index,tee), ch18:ch18(m.index,tee),
-      rounds:m.n, avg:m.avg, recent:m.recent, low:m.low, trend:m.trend, sev:ev.score
+      rounds:m.n, r2026:m.rounds2026, avg:m.avg, recent:m.recent, low:m.low, trend:m.trend, sev:ev.score,
+      field:p.tournament?1:0
     };
-  }).filter(r=> !q || r.name.toLowerCase().includes(q) || String(r.ghin).includes(q));
+  }).filter(r=> !q || r.name.toLowerCase().includes(q) || String(r.ghin).includes(q))
+    .filter(r=> !fieldOnly || r.field);
+  const fieldTotal = state.players.filter(p=>p.tournament).length;
+  if($("#fieldCount")) $("#fieldCount").textContent = fieldTotal? `${fieldTotal} in field` : "";
 
   rows.sort((a,b)=>{
     let x=a[sortKey], y=b[sortKey];
@@ -503,12 +513,14 @@ function renderPlayers(){
   const body = rows.map(r=>{
     const topFlags = r.ev.flags.filter(f=>f.sev!=="ok").slice(0,2).map(f=>`<span class="flag ${f.sev}">${esc(f.label)}</span>`).join("");
     return `<tr data-id="${r.p.id}">
+      <td class="num"><input type="checkbox" data-tourney="${r.p.id}" ${r.field?"checked":""} title="In the tournament field"></td>
       <td><b>${esc(r.name)}</b></td>
       <td class="muted">${esc(r.ghin)}</td>
       <td class="num">${fmt(r.index)}</td>
       <td class="num">${r.ch9==null?"—":r.ch9}</td>
       <td class="num">${r.ch18==null?"—":r.ch18}</td>
       <td class="num">${r.rounds}</td>
+      <td class="num">${r.r2026}</td>
       <td class="num">${fmt(r.avg)}</td>
       <td class="num">${fmt(r.recent)}</td>
       <td class="num">${fmt(r.low)}</td>
@@ -517,7 +529,7 @@ function renderPlayers(){
       <td><button class="small" data-edit="${r.p.id}">Edit</button></td>
     </tr>`;
   }).join("");
-  $("#playersBody").innerHTML = body || `<tr><td colspan="12" class="muted" style="padding:24px;text-align:center">No players yet. Use <b>⛳ Pull from GHIN</b> to load the Geneva roster, or <b>Load sample data</b> to explore.</td></tr>`;
+  $("#playersBody").innerHTML = body || `<tr><td colspan="14" class="muted" style="padding:24px;text-align:center">No players yet. Use <b>⛳ Pull from GHIN</b> to load the Geneva roster, or <b>Load sample data</b> to explore.</td></tr>`;
 }
 
 /* tiny SVG sparkline of differentials, oldest->newest (lower=better) */
@@ -588,8 +600,9 @@ function playerName(id){ const p=state.players.find(x=>x.id===id); if(!p) return
 function renderTeams(){
   const assigned = new Set();
   state.teams.forEach(t=>t.forEach(id=>id&&assigned.add(id)));
-  // pool
-  const pool = state.players.filter(p=>!assigned.has(p.id));
+  // pool — if a tournament field has been marked, only offer those players
+  const hasField = state.players.some(p=>p.tournament);
+  const pool = state.players.filter(p=>!assigned.has(p.id) && (!hasField || p.tournament));
   $("#poolList").innerHTML = pool.length? pool.map(p=>{
     const m=playerMetrics(p);
     return `<div class="team-slot"><span><b>${esc(playerName(p.id))}</b> <span class="muted">Idx ${fmt(m.index)}</span></span>
@@ -647,7 +660,8 @@ function renderTeamSummary(){
 /* Auto-balance: pair strongest with weakest to equalize combined metric */
 function autoBalance(){
   const metric=$("#balanceMetric").value;
-  const ps=state.players.map(p=>{
+  const hasField = state.players.some(p=>p.tournament);
+  const ps=state.players.filter(p=>!hasField || p.tournament).map(p=>{
     const m=playerMetrics(p);
     return {id:p.id, v: metric==="index"?(m.index??99):(m.low??99)};
   }).sort((a,b)=>a.v-b.v);
@@ -879,18 +893,6 @@ function roundsFromGhinJson(j){
     };
   }).filter(r=>r.date||r.score);
 }
-/* Does this golfer record belong to the given club? Used to scope an
-   association-wide last-name search down to one club. If the record carries no
-   club info at all, trust the server-side club_id filter and keep it. */
-function golferInClub(g, clubId){
-  clubId=String(clubId);
-  const hits=[g.club_id, g.club&&g.club.id];
-  const affs=g.club_affiliations||g.clubs||g.golfer_club_affiliations||[];
-  if(Array.isArray(affs)) affs.forEach(a=>hits.push(a&&(a.club_id||a.id)));
-  const known=hits.filter(x=>x!=null&&x!=="");
-  if(!known.length) return true;                 // no club info -> trust server filter
-  return known.some(x=>String(x)===clubId);
-}
 /* Map a GHIN golfer record (search/roster result) into our player model. */
 function playerFromGhinGolfer(g){
   const club = g.club || {};
@@ -944,7 +946,6 @@ const GHIN = {
     if(clubId)   cfg.clubId  = String(clubId);     // prefer detected
     if(clubName) cfg.clubName = clubName;
     if(assoc)    cfg.assocId = String(assoc);
-    console.log("[GHIN] login detected club_id=%s association_id=%s name=%s", cfg.clubId, cfg.assocId, cfg.clubName);
     save();
     return gu;
   },
@@ -956,7 +957,6 @@ const GHIN = {
     if(params.source===undefined) params.source="GHINcom";
     Object.entries(params).forEach(([k,v])=>{ if(v!=null&&v!=="") url.searchParams.set(k,String(v)); });
     this.lastUrl = url.toString();
-    console.log("[GHIN] GET", this.lastUrl);
     let res;
     // Match the working app's headers exactly.
     try{ res = await fetch(this.lastUrl, { headers:{ "Authorization":"Bearer "+this.token, "Accept":"application/json", "Content-Type":"application/json; charset=utf-8" } }); }
@@ -1139,16 +1139,12 @@ function renderGhin(){
           member's scores. Takes ~a minute for a big roster.</span></div>
         <h3>Or do it in steps</h3>
         <div class="row">
-          <div class="field"><label>Filter by last name (optional)</label><input id="ghLastName" placeholder="leave blank for all"></div>
           <button type="button" id="ghRosterBtn" data-act="roster">Load roster only</button>
           <button type="button" id="ghScoresBtn" data-act="scores">Pull scores for loaded members</button>
         </div>
-        <div class="row" style="margin-top:6px">
-          <button type="button" class="small" data-act="diag">🔧 Run diagnostic (search by my own GHIN id)</button>
-        </div>
       </div>
       <div id="ghinStatus" style="margin-top:10px"></div>
-      <details style="margin-top:12px"><summary class="muted" style="font-size:12px">Diagnostics (copy this if something fails)</summary>
+      <details style="margin-top:12px"><summary class="muted" style="font-size:12px">Diagnostics (for troubleshooting)</summary>
         <pre id="ghinDebug" style="background:#f0f3f2;padding:10px;border-radius:8px;overflow:auto;max-height:240px;font-size:11px;white-space:pre-wrap;word-break:break-all">No request yet.</pre>
       </details>
       <div class="muted" style="margin-top:10px;font-size:11px">Build ${APP_VERSION}</div>
@@ -1231,73 +1227,23 @@ function wireGhin(){
   $("#view-ghin").onclick = async (e)=>{
     const b = e.target.closest("[data-act]"); if(!b) return;
     const act = b.dataset.act;
-    console.log("[GHIN] action:", act);
     try{
       if(act==="login"){ if(await doLogin()) ghinStatus({msg:'Logged in. Click "Pull everyone" to load the roster and scores.'}); }
       else if(act==="logout"){ GHIN.setToken(null); GHIN.me=null; refreshGhinUi(); ghinStatus({msg:"Logged out."}); }
       else if(act==="roster"){ saveGhinCfg(); const n=await loadRoster(); ghinStatus({msg:`Loaded ${n} member(s). Now pull scores.`}); }
-      else if(act==="scores"){ saveGhinCfg(); const r=await pullScores(); if(r.ok||r.fail) ghinStatus({msg:`Pulled scores for ${r.ok} member(s)${r.fail?`, ${r.fail} failed (see console)`:""}.`}); }
+      else if(act==="scores"){ saveGhinCfg(); const r=await pullScores(); if(r.ok||r.fail) ghinStatus({msg:`Pulled scores for ${r.ok} member(s)${r.fail?`, ${r.fail} failed`:""}.`}); }
       else if(act==="pullall"){ await doPullAll(); }
-      else if(act==="diag"){ await runDiag(); }
     }catch(err){
       console.error("[GHIN] action failed:", err);
       ghinStatus({error:(err&&err.message)||String(err)});
-      // Auto-run the probe set when a roster pull fails so we capture what GHIN accepts.
-      if(act==="pullall"||act==="roster"){ try{ await runDiag(); }catch(_){} }
     }
   };
   try{ refreshGhinUi(); }catch(err){ console.error("[GHIN] refreshGhinUi failed:", err); }
 
-  async function runDiag(){
-    ghinStatus({busy:"Running diagnostic — trying several GHIN call shapes…"});
-    const me = GHIN.me||{};
-    const ln = me.last_name || "a";
-    const gid = GHIN.golferId || me.ghin || me.golfer_id || "";
-    const tests = [
-      {label:"G clubs/{id}/golfers.json",            path:`/clubs/${state.ghin.clubId}/golfers.json`, params:{per_page:100, page:1}},
-      {label:"H club/{id}/golfers.json",             path:`/club/${state.ghin.clubId}/golfers.json`, params:{per_page:100, page:1}},
-      {label:"I clubs/{id}.json",                    path:`/clubs/${state.ghin.clubId}.json`, params:{}},
-      {label:"J search.json club+assoc gs=false",    path:"/golfers/search.json", params:{club_id:state.ghin.clubId, association_id:state.ghin.assocId, global_search:false, per_page:100, page:1}},
-      {label:"K search.json club+assoc gs=true",     path:"/golfers/search.json", params:{club_id:state.ghin.clubId, association_id:state.ghin.assocId, global_search:true, per_page:100, page:1}},
-      {label:"L golfers.json club+assoc gs=false",   path:"/golfers.json", params:{club_id:state.ghin.clubId, association_id:state.ghin.assocId, global_search:false, per_page:100, page:1}},
-      {label:"M associations/{a}/clubs/{c}/golfers", path:`/associations/${state.ghin.assocId}/clubs/${state.ghin.clubId}/golfers.json`, params:{per_page:100, page:1}},
-      {label:"N club_golfers.json?club_id",          path:"/club_golfers.json", params:{club_id:state.ghin.clubId, per_page:100, page:1}}
-    ];
-    let report = `Build ${APP_VERSION} | token ${(state.ghin.appToken||"").slice(0,6)}…\n`+
-                 `golferId=${gid||"(none)"} | me.last_name=${me.last_name||"(none)"} | clubId=${state.ghin.clubId} | assoc=${state.ghin.assocId}\n\n`;
-    // 1) Dump the login response so we can see the real name/golferId/club/association fields.
-    try{ report += "LOGIN RESPONSE (first 1500 chars):\n"+JSON.stringify(GHIN.loginRaw).slice(0,1500)+"\n\n"; }
-    catch(e){ report += "LOGIN RESPONSE: (unavailable)\n\n"; }
-    // 2) Run the call-shape probes.
-    for(const t of tests){
-      try{
-        const j = await GHIN.get(t.path, {...t.params});
-        const list = j.golfers || j.data || (Array.isArray(j)?j:[]);
-        const inClub = list.filter(g=>golferInClub(g, state.ghin.clubId)).length;
-        report += `${t.label}: OK (${list.length} records, ${inClub} in club ${state.ghin.clubId})\n`;
-      }catch(e){
-        report += `${t.label}: FAIL — ${(e&&e.message)||e}\n`;
-      }
-    }
-    // 3) Dump one sample golfer record so we can see its club/association fields.
-    try{
-      const j = await GHIN.get("/golfers/search.json", {last_name:ln, state:"IL", per_page:5, page:1});
-      const list = j.golfers || j.data || [];
-      report += "\nSAMPLE GOLFER RECORD (first 1000 chars):\n"+JSON.stringify(list[0]||{}).slice(0,1000)+"\n";
-    }catch(e){ report += "\nSAMPLE GOLFER RECORD: FAIL — "+((e&&e.message)||e)+"\n"; }
-    const el=document.querySelector("#ghinDebug"); if(el) el.textContent=report;
-    ghinStatus({msg:"Diagnostic complete — expand Diagnostics and paste the whole block."});
-  }
-
   async function doPullAll(){
     saveGhinCfg();
     const n=await loadRoster();
-    if(n===0){
-      ghinStatus({busy:"Roster came back empty — running diagnostic so we can see your real data…"});
-      try{ await runDiag(); }catch(_){}
-      ghinStatus({error:"Roster returned 0 members. Open Diagnostics below and paste the WHOLE block here — it now includes your login response and a sample record, which I need to scope the roster correctly."});
-      return;
-    }
+    if(n===0){ ghinStatus({error:"Roster returned 0 members — see Diagnostics for the last response."}); return; }
     ghinStatus({busy:`Loaded ${n} members. Pulling scores…`});
     const r=await pullScores();
     ghinStatus({msg:`✅ Done — ${n} members loaded, scores pulled for ${r.ok}${r.fail?` (${r.fail} failed)`:""}. See the Players tab.`});
@@ -1389,8 +1335,15 @@ document.addEventListener("DOMContentLoaded",()=>{
   // players table
   $("#playerSearch").oninput=renderPlayers;
   $("#teeFilter").onchange=renderPlayers;
+  $("#fieldOnly").onchange=renderPlayers;
   $("#btnAddPlayer").onclick=()=>openPlayer(null);
+  // toggle tournament-field flag (don't open the dialog)
+  $("#playersTable").addEventListener("change",e=>{
+    const cb=e.target.closest("[data-tourney]"); if(!cb) return;
+    const p=state.players.find(x=>x.id===cb.dataset.tourney); if(p){ p.tournament=cb.checked; save(); renderPlayers(); }
+  });
   $("#playersTable").addEventListener("click",e=>{
+    if(e.target.closest("[data-tourney]")) return;   // checkbox handled by 'change'
     const eb=e.target.closest("[data-edit]"); if(eb){ openPlayer(eb.dataset.edit); return; }
     const th=e.target.closest("th[data-sort]"); if(th && !th.classList.contains("no-sort")){ const k=th.dataset.sort; if(sortKey===k)sortDir*=-1; else {sortKey=k;sortDir=(k==="name"||k==="ghin")?1:-1;} renderPlayers(); return; }
     const tr=e.target.closest("tr[data-id]"); if(tr) openPlayer(tr.dataset.id);
