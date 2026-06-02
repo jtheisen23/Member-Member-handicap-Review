@@ -332,7 +332,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.37";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.38";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -1779,6 +1779,7 @@ function renderSync(){
         <button class="danger" id="syncDisconnectBtn">Disconnect</button>
       </div>
       <div id="syncMsg" style="margin-top:8px"></div>
+      <div class="muted" style="margin-top:10px;font-size:11px">Build ${APP_VERSION}</div>
     </div>
 
     <div class="card">
