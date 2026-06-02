@@ -111,6 +111,7 @@
     <div class="sub">Geneva Golf Club · Geneva, IL</div>
   </div>
   <div class="spacer"></div>
+  <span id="lockChip" title="Click to lock/unlock editing" style="display:none;cursor:pointer;font-size:12px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);border-radius:20px;padding:3px 10px;margin-right:6px"></span>
   <span id="syncChip" title="Cloud sync status" style="display:none;font-size:12px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);border-radius:20px;padding:3px 10px;margin-right:6px"></span>
   <div class="toolbar">
     <button class="ghost" id="btnPullGhin">⛳ Pull from GHIN</button>
@@ -214,9 +215,10 @@
           </select>
         </label>
       </div>
+      <div id="teamLockBanner"></div>
       <div id="teamSummary"></div>
 
-      <div class="card" style="margin:10px 0 0;background:#fafbfb">
+      <div class="card" id="pairingCard" style="margin:10px 0 0;background:#fafbfb">
         <h3>Create a pairing</h3>
         <p class="help">Partners already chosen? Enter each pair here. Pick two players and add the team, or paste your whole list below.</p>
         <div class="row">
@@ -332,7 +334,24 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.39";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.41";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+
+/* Built-in cloud sync so teammates just open the link and auto-connect.
+   This Firebase config is client-side/public by design; access is governed by
+   the Realtime Database rules. Change DEFAULT_SYNC.room to start a fresh room. */
+const DEFAULT_SYNC = {
+  config: {
+    apiKey: "AIzaSyBIBLFbufGvMWlelqDXJJoq8UZUrsPF4kg",
+    authDomain: "member-member-handicap-review.firebaseapp.com",
+    databaseURL: "https://member-member-handicap-review-default-rtdb.firebaseio.com",
+    projectId: "member-member-handicap-review",
+    storageBucket: "member-member-handicap-review.firebasestorage.app",
+    messagingSenderId: "758453486503",
+    appId: "1:758453486503:web:d68143f27a4f053ac0ec82",
+    measurementId: "G-KPGBGRSPC7"
+  },
+  room: "geneva-mm-2026"
+};
 
 /* ---------- Default course settings (EDITABLE in Settings tab) ----------
    Best-known Geneva Golf Club (Geneva, IL) men's figures — VERIFY on the
@@ -367,6 +386,7 @@ const DEFAULT_STATE = () => ({
     pages:3               // pages of scores to pull per golfer (20 per page)
   },
   watch: { start:"", end:"", baseline:null },   // pre-tournament posting watch window + index snapshot
+  admin: { passHash:null },                     // organizer edit-lock (soft lock; synced to all)
   players: [],
   teams: []   // array of [playerIdOrNull, playerIdOrNull]
 });
@@ -394,6 +414,7 @@ function migrate(s){
   }
   if(!s.ghin.assocId) s.ghin.assocId=d.ghin.assocId;     // ensure Geneva association (106)
   s.watch=s.watch||{start:"",end:"",baseline:null};
+  s.admin=s.admin||{passHash:null};
   s.players=s.players||[]; s.teams=s.teams||[];
   return s;
 }
@@ -416,6 +437,27 @@ const parseIndex = v => {
   if(Math.abs(n)>60) return null;   // 999/sentinel = no established handicap
   return n;
 };
+
+/* ---- organizer edit lock (soft lock to prevent casual changes) ---- */
+function hashPass(s){ let h=5381; s=String(s); for(let i=0;i<s.length;i++){ h=((h<<5)+h)+s.charCodeAt(i); h|=0; } return "h"+(h>>>0).toString(16); }
+function lockSet(){ return state.admin && state.admin.passHash; }
+function canEdit(){ const ph=lockSet(); if(!ph) return true; try{ return sessionStorage.getItem("mmhr_unlocked")===ph; }catch(e){ return false; } }
+function unlockPrompt(){
+  const ph=lockSet(); if(!ph) return true;
+  const pw=prompt("Enter the organizer edit password to make changes:");
+  if(pw==null) return false;
+  if(hashPass(pw)===ph){ try{ sessionStorage.setItem("mmhr_unlocked",ph); }catch(e){} renderHeaderLock(); return true; }
+  alert("Wrong password."); return false;
+}
+/* call before any edit; returns true if allowed (prompting to unlock if needed) */
+function requireEdit(){ if(canEdit()) return true; return unlockPrompt(); }
+function renderHeaderLock(){
+  const el=document.querySelector("#lockChip"); if(!el) return;
+  if(!lockSet()){ el.style.display="none"; return; }
+  el.style.display="inline-block";
+  el.textContent = canEdit() ? "🔓 Editing unlocked" : "🔒 View-only (locked)";
+  el.onclick = ()=>{ if(canEdit()){ try{ sessionStorage.removeItem("mmhr_unlocked"); }catch(e){} renderHeaderLock(); renderAll(); if(document.querySelector("#view-teams.active"))renderTeams(); } else { if(unlockPrompt()){ renderAll(); if(document.querySelector("#view-teams.active"))renderTeams(); } } };
+}
 const fmt = (v,d=1) => v===null||v===undefined||isNaN(v) ? "—" : Number(v).toFixed(d);
 /* Golf "plus handicap" display: stored negative = a plus handicap, shown with a leading "+".
    fmtIndex for handicap index (1 decimal); fmtCH for whole-number course handicaps. */
@@ -697,6 +739,17 @@ function createTeamsFromText(text){
 }
 
 function renderTeams(){
+  const editable = canEdit();
+  // lock banner + disable static controls
+  const lb=$("#teamLockBanner");
+  if(lb) lb.innerHTML = lockSet() && !editable
+    ? `<div class="warn" style="display:flex;align-items:center;gap:10px">🔒 Teams are locked by the organizer — view only.
+        <button class="small primary" id="teamUnlockBtn">Unlock to edit</button></div>`
+    : (lockSet()? `<div class="ok-box">🔓 Editing unlocked on this device.</div>`:"");
+  ["btnAutoBalance","btnClearTeams","btnAddTeam","btnAddPair","btnBulkPairs","pairA","pairB","pairBulk"].forEach(id=>{ const el=$("#"+id); if(el) el.disabled=!editable; });
+  const pc=$("#pairingCard"); if(pc){ pc.style.opacity=editable?"1":".55"; }
+  if($("#teamUnlockBtn")) $("#teamUnlockBtn").onclick=()=>{ if(unlockPrompt()){ renderAll(); renderTeams(); } };
+
   const assigned = new Set();
   state.teams.forEach(t=>t.forEach(id=>id&&assigned.add(id)));
   // pool — if a tournament field has been marked, only offer those players
@@ -705,9 +758,9 @@ function renderTeams(){
   $("#poolList").innerHTML = pool.length? pool.map(p=>{
     const m=playerMetrics(p);
     return `<div class="team-slot"><span><b>${esc(playerName(p.id))}</b> <span class="muted">Idx ${fmtIndex(m.index)}</span></span>
-      <select data-assign="${p.id}"><option value="">Assign to…</option><option value="new">➕ New team</option>${
+      ${editable?`<select data-assign="${p.id}"><option value="">Assign to…</option><option value="new">➕ New team</option>${
         state.teams.map((t,i)=>`<option value="${i}" ${t.filter(Boolean).length>=2?'disabled':''}>Team ${i+1}${t.filter(Boolean).length>=2?' (full)':''}</option>`).join("")
-      }</select></div>`;
+      }</select>`:""}</div>`;
   }).join("") : '<p class="muted">All players assigned.</p>';
 
   // pairing-picker dropdowns (unassigned players)
@@ -734,7 +787,7 @@ function renderTeams(){
       const m=id?playerMetrics(state.players.find(x=>x.id===id)):null;
       return `<div class="team-slot">
         <span>${id?`<b>${esc(playerName(id))}</b> <span class="muted">Idx ${fmtIndex(m.index)}</span>`:'<span class="muted">— empty —</span>'}</span>
-        ${id?`<button class="small" data-remove="${i}:${idx}">remove</button>`:''}
+        ${id&&editable?`<button class="small" data-remove="${i}:${idx}">remove</button>`:''}
       </div>`;
     };
     const combined = (p1&&p2)?fmtIndex((playerMetrics(p1).index||0)+(playerMetrics(p2).index||0)):"—";
@@ -742,7 +795,7 @@ function renderTeams(){
     const combHcp = (p1&&p2)?` · combined CH9 W ${fmtCH(cc.w)} / B ${fmtCH(cc.b)}`:"";
     return `<div class="team-card">
       <h4>Team ${i+1} <span class="muted" style="font-weight:400">· combined index ${combined}${combHcp}</span>
-        <button class="small" data-deleteteam="${i}" style="float:right">✕</button></h4>
+        ${editable?`<button class="small" data-deleteteam="${i}" style="float:right">✕</button>`:''}</h4>
       ${slot(0,t[0])}${slot(1,t[1])}
       ${alloc}
     </div>`;
@@ -1719,7 +1772,7 @@ function applyRemote(remote){
     state = migrate(remote.state);
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
     const active = (document.querySelector("nav.tabs button.active")||{}).dataset?.view || "players";
-    renderAll(); rerenderView(active);
+    renderAll(); renderHeaderLock(); rerenderView(active);
   }finally{ setTimeout(()=>{ SYNC.applying=false; }, 50); }
   setSyncStatus("live", remote.updatedAt||Date.now());
 }
@@ -1748,28 +1801,53 @@ async function syncConnect(cfg, roomId, seedIfEmpty){
 }
 function syncDisconnect(){ if(SYNC.ref) SYNC.ref.off(); SYNC.ref=null; SYNC.on=false; localStorage.removeItem("mmhr_sync_cfg"); setSyncStatus("off"); if(document.querySelector("#view-sync.active")) renderSync(); }
 function syncAutoConnect(){
-  const s = syncCfgGet(); if(!s||!s.cfg||!s.roomId) return;
-  syncConnect(s.cfg, s.roomId, false).catch(e=>{ console.warn("auto-connect failed", e); setSyncStatus("error"); });
+  let s = syncCfgGet();
+  if(!s||!s.cfg||!s.roomId){ if(typeof DEFAULT_SYNC!=="undefined" && DEFAULT_SYNC.config) s={cfg:DEFAULT_SYNC.config, roomId:DEFAULT_SYNC.room}; }
+  if(!s||!s.cfg||!s.roomId) return;
+  // seed the room only if this device already has data (the organizer); viewers won't overwrite it
+  const seed = !!(state.players && state.players.length);
+  syncConnect(s.cfg, s.roomId, seed).catch(e=>{ console.warn("auto-connect failed", e); setSyncStatus("error"); });
 }
 
+function renderAdminLock(){
+  const box=document.querySelector("#adminLockBox"); if(!box) return;
+  if(!lockSet()){
+    box.innerHTML=`<div class="info" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      🔒 <b>Edit lock: off</b> — anyone with the link can change teams. Set a password to make it view-only for everyone else.
+      <input id="lockPw" type="password" placeholder="set edit password" style="max-width:200px">
+      <button class="small primary" id="lockSetBtn">Lock editing</button></div>`;
+    box.querySelector("#lockSetBtn").onclick=()=>{ const pw=box.querySelector("#lockPw").value; if(!pw){alert("Enter a password first.");return;} state.admin.passHash=hashPass(pw); try{sessionStorage.setItem("mmhr_unlocked",state.admin.passHash);}catch(e){} save(); renderHeaderLock(); renderAdminLock(); };
+  } else {
+    const unlocked=canEdit();
+    box.innerHTML=`<div class="${unlocked?'ok-box':'warn'}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      🔒 <b>Edit lock: ON</b> — others see everything but can't change teams. This device is ${unlocked?"<b>unlocked</b> (you can edit)":"<b>locked</b>"}.
+      ${unlocked?`<button class="small" id="lockNowBtn">Lock this device</button> <button class="small danger" id="lockRemoveBtn">Remove password</button>`:`<button class="small primary" id="lockUnlockBtn">Unlock</button>`}</div>`;
+    const q=s=>box.querySelector(s);
+    if(q("#lockNowBtn")) q("#lockNowBtn").onclick=()=>{ try{sessionStorage.removeItem("mmhr_unlocked");}catch(e){} renderHeaderLock(); renderAdminLock(); };
+    if(q("#lockRemoveBtn")) q("#lockRemoveBtn").onclick=()=>{ if(confirm("Remove the edit password? Anyone will be able to edit teams again.")){ state.admin.passHash=null; try{sessionStorage.removeItem("mmhr_unlocked");}catch(e){} save(); renderHeaderLock(); renderAdminLock(); } };
+    if(q("#lockUnlockBtn")) q("#lockUnlockBtn").onclick=()=>{ if(unlockPrompt()) renderAdminLock(); };
+  }
+}
 function renderSyncStatus(){
   const box=document.querySelector("#syncStatusBox"); if(!box) return;
+  renderAdminLock();
   const on=SYNC.on;
   box.innerHTML = on
     ? `<div class="ok-box">✅ Live sync is ON. Everyone using the same Room ID sees this data and changes sync automatically${SYNC.lastAt?` · last update ${new Date(SYNC.lastAt).toLocaleTimeString()}`:""}.</div>`
     : `<div class="warn">Not connected. Paste your Firebase config and a Room ID, then Connect.</div>`;
 }
 function renderSync(){
-  const s = syncCfgGet() || {};
+  const s = syncCfgGet() || (typeof DEFAULT_SYNC!=="undefined" && DEFAULT_SYNC.config ? {cfg:DEFAULT_SYNC.config, roomId:DEFAULT_SYNC.room} : {});
   const cfgStr = s.cfg ? JSON.stringify(s.cfg,null,2) : "";
   const room = s.roomId || "geneva-mm-2026";
   $("#view-sync").innerHTML = `
     <div class="card">
       <h2>☁ Share / Live Sync</h2>
-      <p class="help">Put your setup in a shared cloud "room" so teammates open the same link and see <b>everything you see</b>
-        — teams, settings, the field, pulled players &amp; scores, the posting-watch baseline — updating live. They don't
-        need to log into GHIN; they just open the page.</p>
+      <p class="help">Live sync is <b>preconfigured and auto-connects</b> — teammates just open the link and see
+        <b>everything you see</b> (teams, settings, field, players &amp; scores, posting-watch baseline), updating live.
+        No GHIN login needed for viewers. The fields below are only if you want to point at a different Firebase project or room.</p>
       <div id="syncStatusBox"></div>
+      <div id="adminLockBox" style="margin-top:10px"></div>
       <div class="field" style="margin-top:10px"><label>Firebase config <span class="muted">(paste the <code>firebaseConfig</code> object — must include <code>databaseURL</code>)</span></label>
         <textarea id="syncCfg" placeholder='{ "apiKey": "...", "authDomain": "...", "databaseURL": "https://YOUR-DB.firebaseio.com", "projectId": "..." }'>${esc(cfgStr)}</textarea></div>
       <div class="row">
@@ -1865,24 +1943,27 @@ document.addEventListener("DOMContentLoaded",()=>{
   $("#pdSave").onclick=savePlayer;
   $("#pdDelete").onclick=()=>{ if(editingId && confirm("Delete this player?")){ state.players=state.players.filter(x=>x.id!==editingId); state.teams=state.teams.map(t=>t.map(id=>id===editingId?null:id)); save(); $("#playerDialog").close(); renderAll(); } };
   // teams
-  $("#btnAutoBalance").onclick=autoBalance;
-  $("#btnClearTeams").onclick=()=>{ if(confirm("Clear all pairings?")){ state.teams=[]; save(); renderTeams(); } };
-  $("#btnAddTeam").onclick=()=>{ state.teams.push([null,null]); save(); renderTeams(); };
+  $("#btnAutoBalance").onclick=()=>{ if(!requireEdit())return; autoBalance(); };
+  $("#btnClearTeams").onclick=()=>{ if(!requireEdit())return; if(confirm("Clear all pairings?")){ state.teams=[]; save(); renderTeams(); } };
+  $("#btnAddTeam").onclick=()=>{ if(!requireEdit())return; state.teams.push([null,null]); save(); renderTeams(); };
   $("#btnAddPair").onclick=()=>{
+    if(!requireEdit())return;
     const a=$("#pairA").value, b=$("#pairB").value;
     if(!a||!b){ alert("Pick two players."); return; }
     if(a===b){ alert("Pick two different players."); return; }
     state.teams.push([a,b]); save(); renderTeams();
   };
-  $("#btnBulkPairs").onclick=()=>{ const res=createTeamsFromText($("#pairBulk").value); save(); renderTeams(); const el=$("#pairResult"); if(el) el.innerHTML=res.html; if(!res.problems.length) $("#pairBulk").value=""; };
+  $("#btnBulkPairs").onclick=()=>{ if(!requireEdit())return; const res=createTeamsFromText($("#pairBulk").value); save(); renderTeams(); const el=$("#pairResult"); if(el) el.innerHTML=res.html; if(!res.problems.length) $("#pairBulk").value=""; };
   $("#btnExportTeams").onclick=exportTeams;
   $("#balanceMetric").onchange=renderTeams;
   $("#teamsList").addEventListener("click",e=>{
+    if(!canEdit()){ if(e.target.closest("[data-remove],[data-deleteteam]")) requireEdit(); return; }
     const rm=e.target.closest("[data-remove]"); if(rm){ const [ti,si]=rm.dataset.remove.split(":").map(Number); state.teams[ti][si]=null; save(); renderTeams(); return; }
     const dt=e.target.closest("[data-deleteteam]"); if(dt){ state.teams.splice(+dt.dataset.deleteteam,1); save(); renderTeams(); return; }
   });
   $("#poolList").addEventListener("change",e=>{
     const sel=e.target.closest("[data-assign]"); if(!sel||sel.value==="")return;
+    if(!requireEdit()){ renderTeams(); return; }
     const pid=sel.dataset.assign;
     if(sel.value==="new"){ state.teams.push([pid,null]); save(); renderTeams(); return; }
     const ti=+sel.value; const slot=state.teams[ti][0]?1:0;
@@ -1897,6 +1978,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   });
 
   renderPlayers();
+  renderHeaderLock();
   try{ syncAutoConnect(); }catch(e){ console.warn("sync auto-connect error", e); }
 });
 
