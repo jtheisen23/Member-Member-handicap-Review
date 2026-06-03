@@ -342,7 +342,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.52";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.53";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -1824,7 +1824,7 @@ function setSyncStatus(s, at){
   if(document.querySelector("#view-sync.active") || (typeof renderSync==="function" && document.querySelector("#view-sync"))) { try{ if(document.querySelector("#syncStatusBox")) renderSyncStatus(); }catch(e){} }
 }
 
-function scheduleSyncPush(){ if(!SYNC.on||SYNC.applying||!SYNC.ref) return; clearTimeout(SYNC.timer); SYNC.timer=setTimeout(doSyncPush, 1200); }
+function scheduleSyncPush(){ if(!SYNC.on||SYNC.applying||!SYNC.ref) return; SYNC.lastLocalEditAt=Date.now(); clearTimeout(SYNC.timer); SYNC.timer=setTimeout(doSyncPush, 500); }
 function doSyncPush(){
   if(!SYNC.on||!SYNC.ref) return;
   SYNC.ref.set({ state, _by:SYNC.deviceId, updatedAt:Date.now() })
@@ -1879,6 +1879,8 @@ async function syncConnect(cfg, roomId, seedIfEmpty){
     const remote = snap.val();
     if(!remote || !remote.state){ if(seedIfEmpty){ doSyncPush(); } setSyncStatus("live", Date.now()); return; }
     if(remote._by===SYNC.deviceId){ setSyncStatus("live", remote.updatedAt); return; } // our own echo
+    // don't clobber a change this device just made — let our pending push win
+    if(SYNC.lastLocalEditAt && (Date.now()-SYNC.lastLocalEditAt) < 5000){ scheduleSyncPush(); return; }
     applyRemote(remote);
   }, err=>{ console.warn("sync listen error", err); setSyncStatus("error"); });
   syncCfgSave({ cfg, roomId });
