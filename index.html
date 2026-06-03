@@ -342,7 +342,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.59";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.60";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -973,7 +973,7 @@ function renderVegas(){
   let flagged=0;
   const rows = list.map(o=>{
     const {p,m,vi,wi,ai,hi,dv}=o;
-    const cell=(idx,arr)=>`<td class="num" title="${arr.length} round(s)">${fmtIndex(idx)}</td>`;
+    const cell=(label,idx,arr)=>`<td class="num" title="${label}: ${arr.length} round(s)">${fmtIndex(idx)}</td>`;
     let flag="";
     if(dv!=null){
       if(dv>=TH){ flagged++; flag=`<span class="flag high" title="Casual/weekday scoring is ${fmt(dv)} strokes better than money (Vegas) rounds — possible inflated money handicap">⚑ weekday ${fmt(dv)} better</span>`; }
@@ -982,8 +982,8 @@ function renderVegas(){
     return `<tr>
       <td><b>${esc(playerName(p.id))}</b></td>
       <td class="muted">${esc(p.ghin||"")}</td>
-      <td class="num">${fmtIndex(m.index)}</td>
-      ${cell(vi,o.vegasR)}${cell(wi,o.weekR)}${cell(ai,o.awayR)}${cell(hi,o.homeR)}
+      <td class="num" title="All rounds: ${m.n} round(s)">${fmtIndex(m.index)}</td>
+      ${cell("Vegas (Fri/Sun)",vi,o.vegasR)}${cell("Weekday (Geneva, not Fri/Sun)",wi,o.weekR)}${cell("Away (not Geneva)",ai,o.awayR)}${cell("Home (Geneva)",hi,o.homeR)}
       <td class="num" title="Vegas index − Weekday index">${dv==null?"—":(dv>0?"+":"")+fmt(dv)}</td>
       <td>${flag}</td>
       <td class="num">${m.n}</td>
