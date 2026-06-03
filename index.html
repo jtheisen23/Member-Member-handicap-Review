@@ -342,7 +342,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.53";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.54";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -1817,7 +1817,7 @@ function deviceId(){ let d=localStorage.getItem("mmhr_device"); if(!d){ d=Math.r
 function setSyncStatus(s, at){
   SYNC.status=s; if(at) SYNC.lastAt=at;
   const chip=document.querySelector("#syncChip"); if(!chip) return;
-  const map={off:["",""], connecting:["☁ connecting…",""], live:["☁ Live sync on",""], error:["☁ sync error",""], offline:["☁ offline",""]};
+  const map={off:["",""], connecting:["☁ connecting…",""], live:["☁ Live sync on",""], error:["☁ sync error",""], readonly:["👁 viewing (read-only)",""], offline:["☁ offline",""]};
   if(s==="off"){ chip.style.display="none"; return; }
   chip.style.display="inline-block";
   chip.textContent = s==="live" ? `☁ Live${SYNC.lastAt?" · "+new Date(SYNC.lastAt).toLocaleTimeString():""}` : (map[s]?map[s][0]:s);
@@ -1827,13 +1827,14 @@ function setSyncStatus(s, at){
 function scheduleSyncPush(){ if(!SYNC.on||SYNC.applying||!SYNC.ref) return; SYNC.lastLocalEditAt=Date.now(); clearTimeout(SYNC.timer); SYNC.timer=setTimeout(doSyncPush, 500); }
 function doSyncPush(){
   if(!SYNC.on||!SYNC.ref) return;
+  if(SYNC.writeDenied) return;   // not authorized to write — don't spam failing pushes
   SYNC.ref.set({ state, _by:SYNC.deviceId, updatedAt:Date.now() })
-    .then(()=>setSyncStatus("live", Date.now()))
+    .then(()=>{ SYNC.writeDenied=false; setSyncStatus("live", Date.now()); })
     .catch(e=>{
       console.warn("sync push failed", e);
       const denied = /permission_denied|PERMISSION_DENIED/i.test(e&&(e.message||e.code||""));
-      setSyncStatus("error");
-      if(denied){ const m=document.querySelector("#syncMsg"); if(m) m.innerHTML=`<div class="warn">Write blocked by database rules — sign in as the organizer (Share/Sync → Organizer security) to save changes.</div>`; }
+      if(denied){ SYNC.writeDenied=true; setSyncStatus("readonly"); }   // stable, no flashing
+      else setSyncStatus("error");
     });
 }
 
@@ -1842,7 +1843,7 @@ const AUTH = { user:null, inited:false };
 function authInit(){
   if(AUTH.inited) return; if(typeof firebase==="undefined"||!firebase.auth) return;
   try{
-    firebase.auth().onAuthStateChanged(u=>{ AUTH.user=u||null; renderHeaderLock(); if(document.querySelector("#view-sync.active")) renderSync(); });
+    firebase.auth().onAuthStateChanged(u=>{ AUTH.user=u||null; if(u){ SYNC.writeDenied=false; } renderHeaderLock(); if(document.querySelector("#view-sync.active")) renderSync(); });
     AUTH.inited=true;
   }catch(e){ console.warn("auth init failed", e); }
 }
@@ -1879,8 +1880,8 @@ async function syncConnect(cfg, roomId, seedIfEmpty){
     const remote = snap.val();
     if(!remote || !remote.state){ if(seedIfEmpty){ doSyncPush(); } setSyncStatus("live", Date.now()); return; }
     if(remote._by===SYNC.deviceId){ setSyncStatus("live", remote.updatedAt); return; } // our own echo
-    // don't clobber a change this device just made — let our pending push win
-    if(SYNC.lastLocalEditAt && (Date.now()-SYNC.lastLocalEditAt) < 5000){ scheduleSyncPush(); return; }
+    // don't clobber a change this device just made — let our pending push win (only if we can write)
+    if(!SYNC.writeDenied && SYNC.lastLocalEditAt && (Date.now()-SYNC.lastLocalEditAt) < 5000){ scheduleSyncPush(); return; }
     applyRemote(remote);
   }, err=>{ console.warn("sync listen error", err); setSyncStatus("error"); });
   syncCfgSave({ cfg, roomId });
@@ -1954,9 +1955,11 @@ function renderSyncStatus(){
   renderAdminLock();
   try{ renderAuthBox(); }catch(e){ console.warn("authBox", e); }
   const on=SYNC.on;
-  box.innerHTML = on
-    ? `<div class="ok-box">✅ Live sync is ON. Everyone using the same Room ID sees this data and changes sync automatically${SYNC.lastAt?` · last update ${new Date(SYNC.lastAt).toLocaleTimeString()}`:""}.</div>`
-    : `<div class="warn">Not connected. Paste your Firebase config and a Room ID, then Connect.</div>`;
+  box.innerHTML = !on
+    ? `<div class="warn">Not connected. Paste your Firebase config and a Room ID, then Connect.</div>`
+    : SYNC.writeDenied
+      ? `<div class="warn">👁 <b>Live sync is ON (read-only on this device).</b> Your changes can't be saved because you're not signed in as the organizer. Open <b>Organizer security</b> below and sign in to edit.</div>`
+      : `<div class="ok-box">✅ Live sync is ON. Everyone using the same Room ID sees this data and changes sync automatically${SYNC.lastAt?` · last update ${new Date(SYNC.lastAt).toLocaleTimeString()}`:""}.</div>`;
 }
 function renderSync(){
   const s = syncCfgGet() || (typeof DEFAULT_SYNC!=="undefined" && DEFAULT_SYNC.config ? {cfg:DEFAULT_SYNC.config, roomId:DEFAULT_SYNC.room} : {});
