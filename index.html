@@ -131,6 +131,7 @@
   <button data-view="teams">Team Builder</button>
   <button data-view="overview">Teams Overview</button>
   <button data-view="team-anomaly">Teams Anomaly</button>
+  <button data-view="vegas">Vegas Players</button>
   <button data-view="settings">Course &amp; Rules</button>
   <button data-view="sync">☁ Share / Sync</button>
   <button data-view="help">Help</button>
@@ -264,6 +265,9 @@
   <!-- ============ POSTING WATCH ============ -->
   <section class="view" id="view-watch"></section>
 
+  <!-- ============ VEGAS PLAYERS ============ -->
+  <section class="view" id="view-vegas"></section>
+
   <!-- ============ SETTINGS ============ -->
   <section class="view" id="view-settings">
     <div id="settingsLockBanner"></div>
@@ -338,7 +342,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.51";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.52";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -940,6 +944,38 @@ function renderTeamAnomalies(){
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px">${cards}</div>`;
+}
+
+/* =========================== RENDER: VEGAS PLAYERS =========================== */
+function renderVegas(){
+  const white=teeByName("White"), blue=teeByName("Blue");
+  const list = state.players.filter(p=>p.vegas && p.tournament)
+    .map(p=>({p,m:playerMetrics(p)}))
+    .sort((a,b)=>(a.m.index??99)-(b.m.index??99));
+  const rows = list.map(({p,m})=>`<tr>
+    <td><b>${esc(playerName(p.id))}</b></td>
+    <td class="muted">${esc(p.ghin||"")}</td>
+    <td class="num">${fmtIndex(m.index)}</td>
+    <td class="num">${fmtCH(ch9(m.index,white))}</td>
+    <td class="num">${fmtCH(ch9(m.index,blue))}</td>
+    <td class="num">${m.n}</td>
+    <td class="num">${m.rounds2026}</td>
+  </tr>`).join("");
+  $("#view-vegas").innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <h2 style="margin:0">Vegas Players</h2>
+        <span class="muted">${list.length} player(s) in the field marked Vegas</span>
+      </div>
+      <p class="help">Players with <b>both</b> the <b>Field</b> and <b>Vegas</b> boxes checked on the Players tab.
+        Add or remove players by toggling those boxes there. CH9 = 9-hole course handicap (White / Blue tees).</p>
+      <div class="tablewrap"><table><thead><tr>
+        <th>Player</th><th>GHIN #</th><th class="num">Index</th>
+        <th class="num" title="9-hole course handicap, White tees">CH9 White</th>
+        <th class="num" title="9-hole course handicap, Blue tees">CH9 Blue</th>
+        <th class="num">Rounds</th><th class="num" title="Rounds posted in 2026">2026</th>
+      </tr></thead><tbody>${rows||`<tr><td colspan="7" class="muted" style="padding:20px;text-align:center">No players have both <b>Field</b> and <b>Vegas</b> checked yet — set them on the Players tab.</td></tr>`}</tbody></table></div>
+    </div>`;
 }
 
 /* =========================== RENDER: POSTING WATCH =========================== */
@@ -1825,6 +1861,7 @@ function applyRemote(remote){
 function rerenderView(v){
   if(v==="anomalies") renderAnomalies(); else if(v==="watch") renderWatch(); else if(v==="teams") renderTeams();
   else if(v==="overview") renderOverview(); else if(v==="team-anomaly") renderTeamAnomalies();
+  else if(v==="vegas") renderVegas();
   else if(v==="settings") renderSettings(); else if(v==="sync") renderSync(); else renderPlayers();
 }
 async function syncConnect(cfg, roomId, seedIfEmpty){
@@ -1989,6 +2026,7 @@ function switchView(v){
   if(v==="ghin") renderGhin();
   if(v==="anomalies") renderAnomalies();
   if(v==="watch") renderWatch();
+  if(v==="vegas") renderVegas();
   if(v==="teams") renderTeams();
   if(v==="overview") renderOverview();
   if(v==="team-anomaly") renderTeamAnomalies();
