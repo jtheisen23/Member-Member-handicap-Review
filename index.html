@@ -342,7 +342,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.56";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.57";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -975,8 +975,6 @@ function renderVegas(){
       <td class="muted">${esc(p.ghin||"")}</td>
       <td class="num">${fmtIndex(m.index)}</td>
       ${cell(vi,vegasR)}${cell(wi,weekR)}${cell(ai,awayR)}${cell(hi,homeR)}
-      <td class="num">${fmtCH(ch9(m.index,white))}</td>
-      <td class="num">${fmtCH(ch9(m.index,blue))}</td>
       <td class="num">${m.n}</td>
     </tr>`;
   }).join("");
@@ -1001,10 +999,8 @@ function renderVegas(){
         <th class="num" title="Index from non-Fri/Sun rounds">Weekday Idx</th>
         <th class="num" title="Index from rounds not at Geneva">Away Idx</th>
         <th class="num" title="Index from rounds at Geneva">Home Idx</th>
-        <th class="num" title="9-hole course handicap, White tees">CH9 White</th>
-        <th class="num" title="9-hole course handicap, Blue tees">CH9 Blue</th>
         <th class="num">Rounds</th>
-      </tr></thead><tbody>${rows||`<tr><td colspan="10" class="muted" style="padding:20px;text-align:center">No players have both <b>Field</b> and <b>Vegas</b> checked yet — set them on the Players tab.</td></tr>`}</tbody></table></div>
+      </tr></thead><tbody>${rows||`<tr><td colspan="8" class="muted" style="padding:20px;text-align:center">No players have both <b>Field</b> and <b>Vegas</b> checked yet — set them on the Players tab.</td></tr>`}</tbody></table></div>
     </div>`;
 }
 
