@@ -342,7 +342,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.55";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.56";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -1867,13 +1867,21 @@ function doSyncPush(){
       else setSyncStatus("error");
     });
 }
+/* Probe write permission without touching the saved state. Updates status and
+   returns a promise resolving to true (can write) / false (denied). */
+function syncTestWrite(){
+  if(!SYNC.ref) return Promise.resolve(false);
+  return SYNC.ref.child("_probe").set(Date.now())
+    .then(()=>{ try{ SYNC.ref.child("_probe").remove(); }catch(e){} SYNC.writeDenied=false; setSyncStatus("live", Date.now()); if(document.querySelector("#view-sync")) try{renderSyncStatus();}catch(e){} return true; })
+    .catch(e=>{ SYNC.writeDenied=true; setSyncStatus("readonly"); if(document.querySelector("#view-sync")) try{renderSyncStatus();}catch(e){} return false; });
+}
 
 /* ---- Firebase Auth (organizer hard-lock) ---- */
 const AUTH = { user:null, inited:false };
 function authInit(){
   if(AUTH.inited) return; if(typeof firebase==="undefined"||!firebase.auth) return;
   try{
-    firebase.auth().onAuthStateChanged(u=>{ AUTH.user=u||null; if(u){ SYNC.writeDenied=false; } renderHeaderLock(); if(document.querySelector("#view-sync.active")) renderSync(); });
+    firebase.auth().onAuthStateChanged(u=>{ AUTH.user=u||null; if(u){ SYNC.writeDenied=false; if(SYNC.on) syncTestWrite(); } renderHeaderLock(); if(document.querySelector("#view-sync.active")) renderSync(); });
     AUTH.inited=true;
   }catch(e){ console.warn("auth init failed", e); }
 }
@@ -1957,8 +1965,11 @@ function renderAuthBox(){
     <summary class="muted" style="font-size:12px">Organizer security — server-enforced lock (Firebase Auth) ${u?"· ✅ signed in":""}</summary>
     <p class="help" style="margin-top:8px">This is the <b>real</b> lock: with the rules below, only your signed-in organizer account can write to the database — anyone else is read-only, even with dev tools. Viewers still don't sign in.</p>
     ${!hasAuth ? `<div class="warn">Auth library didn't load — reload the page and try again.</div>` :
-      (u ? `<div class="ok-box">✅ Signed in as <b>${esc(u.email||"organizer")}</b> <button class="small" id="authSignOut" style="margin-left:8px">Sign out</button></div>
-            <div class="field" style="margin-top:8px"><label>Your admin UID</label><input id="authUid" value="${esc(u.uid)}" readonly onclick="this.select()"></div>`
+      (u ? `<div class="ok-box">✅ Signed in as <b>${esc(u.email||"organizer")}</b>
+              ${SYNC.writeDenied?`<span class="flag high" style="margin-left:6px">but saves are BLOCKED — rules UID mismatch</span>`:`<span class="flag ok" style="margin-left:6px">saving works</span>`}
+              <button class="small" id="authRecheck" style="margin-left:8px">Re-check save access</button>
+              <button class="small" id="authSignOut" style="margin-left:6px">Sign out</button></div>
+            <div class="field" style="margin-top:8px"><label>Your admin UID <span class="muted">— the rules you publish MUST contain this exact value</span></label><input id="authUid" value="${esc(u.uid)}" readonly onclick="this.select()" style="font-weight:700"></div>`
          : `<div class="row" style="margin-top:8px">
               <div class="field"><label>Organizer email</label><input id="authEmail" type="email" autocomplete="username" style="min-width:200px"></div>
               <div class="field"><label>Password</label><input id="authPass" type="password" autocomplete="current-password"></div>
@@ -1966,19 +1977,21 @@ function renderAuthBox(){
               <button id="authSignUp" title="First time only — creates your organizer account">Create account</button>
             </div>`)}
     <div id="authMsg" style="margin-top:6px"></div>
+    ${u&&SYNC.writeDenied?`<div class="warn" style="margin-top:6px">⚠︎ You're signed in but the database is still rejecting writes. This means the <b>UID in your published rules doesn't match the UID above</b> — usually because the rules were copied before signing in (so they contain <code>PASTE_YOUR_UID_HERE</code>). Re-copy the rules below (now showing your real UID) and re-publish.</div>`:""}
     <label class="muted" style="font-size:12px;margin-top:12px;display:block">Realtime Database → Rules (paste &amp; Publish):</label>
     <textarea readonly onclick="this.select()" style="min-height:150px">${esc(rules(u&&u.uid))}</textarea>
     <ol class="help" style="line-height:1.7">
       <li>Firebase console → <b>Build → Authentication → Get started → Email/Password → Enable</b>.</li>
       <li>Here, enter an email + password and click <b>Create account</b> (first time), then <b>Sign in</b>. Your UID fills in above.</li>
-      <li>Firebase console → <b>Realtime Database → Rules</b> → paste the box above → <b>Publish</b>.</li>
-      <li>Done — only your signed-in account can save. Keep yourself signed in on your device.</li>
+      <li>Firebase console → <b>Realtime Database → Rules</b> → paste the box above (it now contains your real UID) → <b>Publish</b>.</li>
+      <li>Click <b>Re-check save access</b> above — it should flip to <b>saving works</b>.</li>
     </ol>
   </details>`;
   const q=s=>box.querySelector(s);
   if(q("#authSignIn")) q("#authSignIn").onclick=async()=>{ const m=q("#authMsg"); try{ await firebase.auth().signInWithEmailAndPassword(q("#authEmail").value.trim(), q("#authPass").value); m.innerHTML=`<div class="ok-box">Signed in.</div>`; }catch(e){ m.innerHTML=`<div class="warn">${esc(e.message)}</div>`; } };
   if(q("#authSignUp")) q("#authSignUp").onclick=async()=>{ const m=q("#authMsg"); try{ await firebase.auth().createUserWithEmailAndPassword(q("#authEmail").value.trim(), q("#authPass").value); m.innerHTML=`<div class="ok-box">Account created &amp; signed in.</div>`; }catch(e){ m.innerHTML=`<div class="warn">${esc(e.message)}</div>`; } };
   if(q("#authSignOut")) q("#authSignOut").onclick=()=>{ try{ firebase.auth().signOut(); }catch(e){} };
+  if(q("#authRecheck")) q("#authRecheck").onclick=async()=>{ const m=q("#authMsg"); m.innerHTML=`<div class="info">Testing write access…</div>`; const ok=await syncTestWrite(); m.innerHTML = ok?`<div class="ok-box">✅ Saving works — you can edit.</div>`:`<div class="warn">Still blocked — the published rules' UID doesn't match. Re-copy &amp; re-publish the rules below.</div>`; renderAuthBox(); };
 }
 function renderSyncStatus(){
   const box=document.querySelector("#syncStatusBox"); if(!box) return;
