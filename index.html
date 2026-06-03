@@ -342,7 +342,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.54";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.55";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -508,6 +508,16 @@ function computeIndex(diffs){
   const avg = lowest.reduce((s,x)=>s+x,0)/lowest.length;
   return Math.round((avg+adj)*10)/10;
 }
+
+/* WHS-style index from an arbitrary subset of rounds (newest-first, last 20). */
+function indexFromRounds(rounds){
+  const sorted=(rounds||[]).slice().sort((a,b)=>Date.parse(b.date||0)-Date.parse(a.date||0));
+  const diffs=sorted.map(roundDifferential).filter(x=>x!=null).slice(0,20);
+  return computeIndex(diffs);
+}
+/* Local day-of-week for a YYYY-MM-DD round date (0=Sun … 5=Fri … 6=Sat). */
+function roundDOW(r){ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(r.date||"")); return m? new Date(+m[1],+m[2]-1,+m[3]).getDay() : null; }
+function roundIsGeneva(r){ return /geneva/i.test(String(r.course||r.tees||"")); }
 
 /* Course handicaps */
 function ch18(index, tee){ if(index==null) return null; return Math.round(index*tee.s18/113 + (tee.r18-tee.par18)); }
@@ -952,15 +962,24 @@ function renderVegas(){
   const list = state.players.filter(p=>p.vegas && p.tournament)
     .map(p=>({p,m:playerMetrics(p)}))
     .sort((a,b)=>(a.m.index??99)-(b.m.index??99));
-  const rows = list.map(({p,m})=>`<tr>
-    <td><b>${esc(playerName(p.id))}</b></td>
-    <td class="muted">${esc(p.ghin||"")}</td>
-    <td class="num">${fmtIndex(m.index)}</td>
-    <td class="num">${fmtCH(ch9(m.index,white))}</td>
-    <td class="num">${fmtCH(ch9(m.index,blue))}</td>
-    <td class="num">${m.n}</td>
-    <td class="num">${m.rounds2026}</td>
-  </tr>`).join("");
+  const rows = list.map(({p,m})=>{
+    const R=p.rounds||[];
+    const vegasR  = R.filter(r=>{const d=roundDOW(r); return d===0||d===5;});           // Fri & Sun
+    const weekR   = R.filter(r=>{const d=roundDOW(r); return d!=null && d!==0 && d!==5;}); // other days
+    const awayR   = R.filter(r=>(r.course||"") && !roundIsGeneva(r));                    // not Geneva
+    const homeR   = R.filter(r=>roundIsGeneva(r));                                       // Geneva
+    const vi=indexFromRounds(vegasR), wi=indexFromRounds(weekR), ai=indexFromRounds(awayR), hi=indexFromRounds(homeR);
+    const cell=(idx,arr)=>`<td class="num" title="${arr.length} round(s)">${fmtIndex(idx)}</td>`;
+    return `<tr>
+      <td><b>${esc(playerName(p.id))}</b></td>
+      <td class="muted">${esc(p.ghin||"")}</td>
+      <td class="num">${fmtIndex(m.index)}</td>
+      ${cell(vi,vegasR)}${cell(wi,weekR)}${cell(ai,awayR)}${cell(hi,homeR)}
+      <td class="num">${fmtCH(ch9(m.index,white))}</td>
+      <td class="num">${fmtCH(ch9(m.index,blue))}</td>
+      <td class="num">${m.n}</td>
+    </tr>`;
+  }).join("");
   $("#view-vegas").innerHTML = `
     <div class="card">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -968,13 +987,24 @@ function renderVegas(){
         <span class="muted">${list.length} player(s) in the field marked Vegas</span>
       </div>
       <p class="help">Players with <b>both</b> the <b>Field</b> and <b>Vegas</b> boxes checked on the Players tab.
-        Add or remove players by toggling those boxes there. CH9 = 9-hole course handicap (White / Blue tees).</p>
-      <div class="tablewrap"><table><thead><tr>
-        <th>Player</th><th>GHIN #</th><th class="num">Index</th>
+        The split indexes below are each a WHS-style index computed from only that subset of the player's posted rounds
+        (needs ≥3 rounds in the subset to show a number):</p>
+      <div class="legend">
+        <span><b>Vegas</b> = rounds on Fri &amp; Sun</span>
+        <span><b>Weekday</b> = rounds on other days</span>
+        <span><b>Away</b> = rounds not at Geneva</span>
+        <span><b>Home</b> = rounds at Geneva</span>
+      </div>
+      <div class="tablewrap" style="margin-top:8px"><table><thead><tr>
+        <th>Player</th><th>GHIN #</th><th class="num" title="Official handicap index">Index</th>
+        <th class="num" title="Index from Friday & Sunday rounds">Vegas Idx</th>
+        <th class="num" title="Index from non-Fri/Sun rounds">Weekday Idx</th>
+        <th class="num" title="Index from rounds not at Geneva">Away Idx</th>
+        <th class="num" title="Index from rounds at Geneva">Home Idx</th>
         <th class="num" title="9-hole course handicap, White tees">CH9 White</th>
         <th class="num" title="9-hole course handicap, Blue tees">CH9 Blue</th>
-        <th class="num">Rounds</th><th class="num" title="Rounds posted in 2026">2026</th>
-      </tr></thead><tbody>${rows||`<tr><td colspan="7" class="muted" style="padding:20px;text-align:center">No players have both <b>Field</b> and <b>Vegas</b> checked yet — set them on the Players tab.</td></tr>`}</tbody></table></div>
+        <th class="num">Rounds</th>
+      </tr></thead><tbody>${rows||`<tr><td colspan="10" class="muted" style="padding:20px;text-align:center">No players have both <b>Field</b> and <b>Vegas</b> checked yet — set them on the Players tab.</td></tr>`}</tbody></table></div>
     </div>`;
 }
 
