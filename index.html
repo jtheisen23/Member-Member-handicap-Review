@@ -342,7 +342,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.57";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.58";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -383,7 +383,8 @@ const DEFAULT_STATE = () => ({
     volatility:6.0,     // stdev of differentials above this => inconsistent
     improving:3.0,      // last-5 avg better than index by this => trending hot
     inflating:3.0,      // recent diffs worse than older by this => possible inflation
-    potentialGap:3.0    // index minus low differential gap => sandbag potential
+    potentialGap:3.0,   // index minus low differential gap => sandbag potential
+    vegasDelta:3.0      // Vegas vs weekday index gap that flags on the Vegas tab
   },
   ghin: {            // GHIN API integration (see Import dialog / Help)
     base:"https://api2.ghin.com/api/v1",
@@ -958,23 +959,33 @@ function renderTeamAnomalies(){
 
 /* =========================== RENDER: VEGAS PLAYERS =========================== */
 function renderVegas(){
-  const white=teeByName("White"), blue=teeByName("Blue");
-  const list = state.players.filter(p=>p.vegas && p.tournament)
-    .map(p=>({p,m:playerMetrics(p)}))
-    .sort((a,b)=>(a.m.index??99)-(b.m.index??99));
-  const rows = list.map(({p,m})=>{
-    const R=p.rounds||[];
-    const vegasR  = R.filter(r=>{const d=roundDOW(r); return d===0||d===5;});           // Fri & Sun
-    const weekR   = R.filter(r=>{const d=roundDOW(r); return d!=null && d!==0 && d!==5;}); // other days
-    const awayR   = R.filter(r=>(r.course||"") && !roundIsGeneva(r));                    // not Geneva
-    const homeR   = R.filter(r=>roundIsGeneva(r));                                       // Geneva
+  const TH = (state.thresholds && state.thresholds.vegasDelta) || 3.0;
+  const list = state.players.filter(p=>p.vegas && p.tournament).map(p=>{
+    const m=playerMetrics(p); const R=p.rounds||[];
+    const vegasR = R.filter(r=>{const d=roundDOW(r); return d===0||d===5;});            // Fri & Sun
+    const weekR  = R.filter(r=>{const d=roundDOW(r); return d!=null && d!==0 && d!==5;}); // other days
+    const awayR  = R.filter(r=>(r.course||"") && !roundIsGeneva(r));                     // not Geneva
+    const homeR  = R.filter(r=>roundIsGeneva(r));                                        // Geneva
     const vi=indexFromRounds(vegasR), wi=indexFromRounds(weekR), ai=indexFromRounds(awayR), hi=indexFromRounds(homeR);
+    const dv=(vi!=null&&wi!=null)?Math.round((vi-wi)*10)/10:null;   // Vegas index minus weekday index
+    return {p,m,vegasR,weekR,awayR,homeR,vi,wi,ai,hi,dv};
+  }).sort((a,b)=>(b.dv??-Infinity)-(a.dv??-Infinity));   // biggest "weekday better than Vegas" first
+  let flagged=0;
+  const rows = list.map(o=>{
+    const {p,m,vi,wi,ai,hi,dv}=o;
     const cell=(idx,arr)=>`<td class="num" title="${arr.length} round(s)">${fmtIndex(idx)}</td>`;
+    let flag="";
+    if(dv!=null){
+      if(dv>=TH){ flagged++; flag=`<span class="flag high" title="Casual/weekday scoring is ${fmt(dv)} strokes better than money (Vegas) rounds — possible inflated money handicap">⚑ weekday ${fmt(dv)} better</span>`; }
+      else if(dv<=-TH){ flag=`<span class="flag med" title="Plays ${fmt(-dv)} strokes better in Vegas (money) than casual rounds">Vegas ${fmt(-dv)} better</span>`; }
+    }
     return `<tr>
       <td><b>${esc(playerName(p.id))}</b></td>
       <td class="muted">${esc(p.ghin||"")}</td>
       <td class="num">${fmtIndex(m.index)}</td>
-      ${cell(vi,vegasR)}${cell(wi,weekR)}${cell(ai,awayR)}${cell(hi,homeR)}
+      ${cell(vi,o.vegasR)}${cell(wi,o.weekR)}${cell(ai,o.awayR)}${cell(hi,o.homeR)}
+      <td class="num" title="Vegas index − Weekday index">${dv==null?"—":(dv>0?"+":"")+fmt(dv)}</td>
+      <td>${flag}</td>
       <td class="num">${m.n}</td>
     </tr>`;
   }).join("");
@@ -982,16 +993,17 @@ function renderVegas(){
     <div class="card">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <h2 style="margin:0">Vegas Players</h2>
-        <span class="muted">${list.length} player(s) in the field marked Vegas</span>
+        <span class="muted">${list.length} player(s) · ${flagged} with a large Vegas/weekday gap</span>
       </div>
-      <p class="help">Players with <b>both</b> the <b>Field</b> and <b>Vegas</b> boxes checked on the Players tab.
-        The split indexes below are each a WHS-style index computed from only that subset of the player's posted rounds
-        (needs ≥3 rounds in the subset to show a number):</p>
+      <p class="help">Players with <b>both</b> the <b>Field</b> and <b>Vegas</b> boxes checked. Each split index is a WHS-style
+        index from only that subset of rounds (needs ≥3 rounds to show). The <b>Δ</b> column is the Vegas index minus the
+        weekday index; a flag appears when the gap is ≥ ${TH} (adjustable in Course &amp; Rules).</p>
       <div class="legend">
-        <span><b>Vegas</b> = rounds on Fri &amp; Sun</span>
-        <span><b>Weekday</b> = rounds on other days</span>
-        <span><b>Away</b> = rounds not at Geneva</span>
-        <span><b>Home</b> = rounds at Geneva</span>
+        <span><b>Vegas</b> = Fri &amp; Sun (money)</span>
+        <span><b>Weekday</b> = other days (casual)</span>
+        <span><b>Away</b> = not at Geneva</span>
+        <span><b>Home</b> = at Geneva</span>
+        <span><span class="flag high">⚑ weekday X better</span> casual scoring beats money rounds — review</span>
       </div>
       <div class="tablewrap" style="margin-top:8px"><table><thead><tr>
         <th>Player</th><th>GHIN #</th><th class="num" title="Official handicap index">Index</th>
@@ -999,8 +1011,10 @@ function renderVegas(){
         <th class="num" title="Index from non-Fri/Sun rounds">Weekday Idx</th>
         <th class="num" title="Index from rounds not at Geneva">Away Idx</th>
         <th class="num" title="Index from rounds at Geneva">Home Idx</th>
+        <th class="num" title="Vegas index − Weekday index (positive = better casually)">Δ V−Wk</th>
+        <th title="Gap flag">Flag</th>
         <th class="num">Rounds</th>
-      </tr></thead><tbody>${rows||`<tr><td colspan="8" class="muted" style="padding:20px;text-align:center">No players have both <b>Field</b> and <b>Vegas</b> checked yet — set them on the Players tab.</td></tr>`}</tbody></table></div>
+      </tr></thead><tbody>${rows||`<tr><td colspan="10" class="muted" style="padding:20px;text-align:center">No players have both <b>Field</b> and <b>Vegas</b> checked yet — set them on the Players tab.</td></tr>`}</tbody></table></div>
     </div>`;
 }
 
@@ -1192,7 +1206,8 @@ function renderSettings(){
     tf("volatility","Volatility σ flag","0.5")+
     tf("improving","Trending-hot gap","0.5")+
     tf("inflating","Score-rising gap","0.5")+
-    tf("potentialGap","Upside gap","0.5");
+    tf("potentialGap","Upside gap","0.5")+
+    tf("vegasDelta","Vegas vs weekday Δ flag","0.5");
 
   // read-only for view-only (locked) devices
   const ed = canEdit();
