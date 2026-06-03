@@ -342,7 +342,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.58";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.59";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -962,8 +962,8 @@ function renderVegas(){
   const TH = (state.thresholds && state.thresholds.vegasDelta) || 3.0;
   const list = state.players.filter(p=>p.vegas && p.tournament).map(p=>{
     const m=playerMetrics(p); const R=p.rounds||[];
-    const vegasR = R.filter(r=>{const d=roundDOW(r); return d===0||d===5;});            // Fri & Sun
-    const weekR  = R.filter(r=>{const d=roundDOW(r); return d!=null && d!==0 && d!==5;}); // other days
+    const vegasR = R.filter(r=>{const d=roundDOW(r); return d===0||d===5;});            // Fri & Sun (money)
+    const weekR  = R.filter(r=>{const d=roundDOW(r); return roundIsGeneva(r) && d!=null && d!==0 && d!==5;}); // Geneva home rounds, not Fri/Sun
     const awayR  = R.filter(r=>(r.course||"") && !roundIsGeneva(r));                     // not Geneva
     const homeR  = R.filter(r=>roundIsGeneva(r));                                        // Geneva
     const vi=indexFromRounds(vegasR), wi=indexFromRounds(weekR), ai=indexFromRounds(awayR), hi=indexFromRounds(homeR);
@@ -1000,7 +1000,7 @@ function renderVegas(){
         weekday index; a flag appears when the gap is ≥ ${TH} (adjustable in Course &amp; Rules).</p>
       <div class="legend">
         <span><b>Vegas</b> = Fri &amp; Sun (money)</span>
-        <span><b>Weekday</b> = other days (casual)</span>
+        <span><b>Weekday</b> = Geneva rounds, not Fri/Sun (casual)</span>
         <span><b>Away</b> = not at Geneva</span>
         <span><b>Home</b> = at Geneva</span>
         <span><span class="flag high">⚑ weekday X better</span> casual scoring beats money rounds — review</span>
@@ -1008,7 +1008,7 @@ function renderVegas(){
       <div class="tablewrap" style="margin-top:8px"><table><thead><tr>
         <th>Player</th><th>GHIN #</th><th class="num" title="Official handicap index">Index</th>
         <th class="num" title="Index from Friday & Sunday rounds">Vegas Idx</th>
-        <th class="num" title="Index from non-Fri/Sun rounds">Weekday Idx</th>
+        <th class="num" title="Index from Geneva home rounds excluding Fri/Sun">Weekday Idx</th>
         <th class="num" title="Index from rounds not at Geneva">Away Idx</th>
         <th class="num" title="Index from rounds at Geneva">Home Idx</th>
         <th class="num" title="Vegas index − Weekday index (positive = better casually)">Δ V−Wk</th>
