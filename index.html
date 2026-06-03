@@ -156,6 +156,7 @@
           <thead>
             <tr>
               <th data-sort="field" class="num" title="In the tournament field?">Field</th>
+              <th data-sort="vegas" class="num" title="In the Vegas group?">Vegas</th>
               <th data-sort="name">Player</th>
               <th data-sort="ghin">GHIN #</th>
               <th data-sort="index" class="num">Index</th>
@@ -337,7 +338,7 @@
    ========================================================================= */
 
 const STORE_KEY = "mmhr_data_v1";
-const APP_VERSION = "2026-06-01.50";   // bump on each deploy; shown in the GHIN panel to spot stale caches
+const APP_VERSION = "2026-06-01.51";   // bump on each deploy; shown in the GHIN panel to spot stale caches
 
 /* Built-in cloud sync so teammates just open the link and auto-connect.
    This Firebase config is client-side/public by design; access is governed by
@@ -595,7 +596,7 @@ function renderPlayers(){
       ghin:p.ghin||"",
       index:m.index, ch9:ch9(m.index,tee), ch18:ch18(m.index,tee),
       rounds:m.n, r9:m.rounds9, r18:m.rounds18, r2026:m.rounds2026, avg:m.avg, recent:m.recent, low:m.low, trend:m.trend, sev:ev.score,
-      field:p.tournament?1:0
+      field:p.tournament?1:0, vegas:p.vegas?1:0
     };
   }).filter(r=> !q || r.name.toLowerCase().includes(q) || String(r.ghin).includes(q))
     .filter(r=> !fieldOnly || r.field);
@@ -615,6 +616,7 @@ function renderPlayers(){
     const topFlags = r.ev.flags.filter(f=>f.sev!=="ok").slice(0,2).map(f=>`<span class="flag ${f.sev}">${esc(f.label)}</span>`).join("");
     return `<tr data-id="${r.p.id}">
       <td class="num"><input type="checkbox" data-tourney="${r.p.id}" ${r.field?"checked":""} ${editable?"":"disabled"} title="${editable?"In the tournament field":"Locked by organizer"}"></td>
+      <td class="num"><input type="checkbox" data-vegas="${r.p.id}" ${r.vegas?"checked":""} ${editable?"":"disabled"} title="${editable?"In the Vegas group":"Locked by organizer"}"></td>
       <td><b>${esc(r.name)}</b></td>
       <td class="muted">${esc(r.ghin)}</td>
       <td class="num">${fmtIndex(r.index)}</td>
@@ -631,7 +633,7 @@ function renderPlayers(){
       <td><button class="small" data-edit="${r.p.id}">Edit</button></td>
     </tr>`;
   }).join("");
-  $("#playersBody").innerHTML = body || `<tr><td colspan="15" class="muted" style="padding:24px;text-align:center">No players yet. Use <b>⛳ Pull from GHIN</b> to load the Geneva roster, or <b>Load sample data</b> to explore.</td></tr>`;
+  $("#playersBody").innerHTML = body || `<tr><td colspan="16" class="muted" style="padding:24px;text-align:center">No players yet. Use <b>⛳ Pull from GHIN</b> to load the Geneva roster, or <b>Load sample data</b> to explore.</td></tr>`;
 }
 
 /* tiny SVG sparkline of differentials, oldest->newest (lower=better) */
@@ -2010,14 +2012,15 @@ document.addEventListener("DOMContentLoaded",()=>{
   $("#teeFilter").onchange=renderPlayers;
   $("#fieldOnly").onchange=renderPlayers;
   $("#btnAddPlayer").onclick=()=>{ if(!requireEdit())return; openPlayer(null); };
-  // toggle tournament-field flag (don't open the dialog)
+  // toggle Field / Vegas flags (don't open the dialog)
   $("#playersTable").addEventListener("change",e=>{
-    const cb=e.target.closest("[data-tourney]"); if(!cb) return;
+    const cb=e.target.closest("[data-tourney],[data-vegas]"); if(!cb) return;
     if(!requireEdit()){ cb.checked=!cb.checked; return; }
-    const p=state.players.find(x=>x.id===cb.dataset.tourney); if(p){ p.tournament=cb.checked; save(); renderPlayers(); }
+    if(cb.dataset.tourney!=null){ const p=state.players.find(x=>x.id===cb.dataset.tourney); if(p){ p.tournament=cb.checked; save(); renderPlayers(); } }
+    else if(cb.dataset.vegas!=null){ const p=state.players.find(x=>x.id===cb.dataset.vegas); if(p){ p.vegas=cb.checked; save(); renderPlayers(); } }
   });
   $("#playersTable").addEventListener("click",e=>{
-    if(e.target.closest("[data-tourney]")) return;   // checkbox handled by 'change'
+    if(e.target.closest("[data-tourney],[data-vegas]")) return;   // checkboxes handled by 'change'
     const eb=e.target.closest("[data-edit]"); if(eb){ openPlayer(eb.dataset.edit); return; }
     const th=e.target.closest("th[data-sort]"); if(th && !th.classList.contains("no-sort")){ const k=th.dataset.sort; if(sortKey===k)sortDir*=-1; else {sortKey=k;sortDir=(k==="name"||k==="ghin")?1:-1;} renderPlayers(); return; }
     const tr=e.target.closest("tr[data-id]"); if(tr) openPlayer(tr.dataset.id);
