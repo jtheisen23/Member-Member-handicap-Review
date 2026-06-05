@@ -958,6 +958,7 @@ function renderTeamAnomalies(){
 }
 
 /* =========================== RENDER: VEGAS PLAYERS =========================== */
+let vegasSortKey="dv", vegasSortDir=-1;   // default: biggest "weekday better than Vegas" gap first
 function renderVegas(){
   const TH = (state.thresholds && state.thresholds.vegasDelta) || 3.0;
   const list = state.players.filter(p=>p.vegas && p.tournament).map(p=>{
@@ -968,8 +969,15 @@ function renderVegas(){
     const homeR  = R.filter(r=>roundIsGeneva(r));                                        // Geneva
     const vi=indexFromRounds(vegasR), wi=indexFromRounds(weekR), ai=indexFromRounds(awayR), hi=indexFromRounds(homeR);
     const dv=(vi!=null&&wi!=null)?Math.round((vi-wi)*10)/10:null;   // Vegas index minus weekday index
-    return {p,m,vegasR,weekR,awayR,homeR,vi,wi,ai,hi,dv};
-  }).sort((a,b)=>(b.dv??-Infinity)-(a.dv??-Infinity));   // biggest "weekday better than Vegas" first
+    return {p,m,vegasR,weekR,awayR,homeR,vi,wi,ai,hi,dv,
+            name:playerName(p.id), ghin:p.ghin||"", index:m.index, rounds:m.n};   // sortable fields
+  });
+  list.sort((a,b)=>{
+    let x=a[vegasSortKey], y=b[vegasSortKey];
+    if(vegasSortKey==="name"||vegasSortKey==="ghin"){ x=String(x).toLowerCase(); y=String(y).toLowerCase(); return x<y?-1*vegasSortDir:x>y?1*vegasSortDir:0; }
+    x = x==null?-Infinity:x; y=y==null?-Infinity:y;
+    return (x-y)*vegasSortDir;
+  });
   let flagged=0;
   const rows = list.map(o=>{
     const {p,m,vi,wi,ai,hi,dv}=o;
@@ -1005,15 +1013,15 @@ function renderVegas(){
         <span><b>Home</b> = at Geneva</span>
         <span><span class="flag high">⚑ weekday X better</span> casual scoring beats money rounds — review</span>
       </div>
-      <div class="tablewrap" style="margin-top:8px"><table><thead><tr>
-        <th>Player</th><th>GHIN #</th><th class="num" title="Official handicap index">Index</th>
-        <th class="num" title="Index from Friday & Sunday rounds">Vegas Idx</th>
-        <th class="num" title="Index from Geneva home rounds excluding Fri/Sun">Weekday Idx</th>
-        <th class="num" title="Index from rounds not at Geneva">Away Idx</th>
-        <th class="num" title="Index from rounds at Geneva">Home Idx</th>
-        <th class="num" title="Vegas index − Weekday index (positive = better casually)">Δ V−Wk</th>
-        <th title="Gap flag">Flag</th>
-        <th class="num">Rounds</th>
+      <div class="tablewrap" style="margin-top:8px"><table id="vegasTable"><thead><tr>
+        <th data-sort="name">Player</th><th data-sort="ghin">GHIN #</th><th data-sort="index" class="num" title="Official handicap index">Index</th>
+        <th data-sort="vi" class="num" title="Index from Friday & Sunday rounds">Vegas Idx</th>
+        <th data-sort="wi" class="num" title="Index from Geneva home rounds excluding Fri/Sun">Weekday Idx</th>
+        <th data-sort="ai" class="num" title="Index from rounds not at Geneva">Away Idx</th>
+        <th data-sort="hi" class="num" title="Index from rounds at Geneva">Home Idx</th>
+        <th data-sort="dv" class="num" title="Vegas index − Weekday index (positive = better casually)">Δ V−Wk</th>
+        <th class="no-sort" title="Gap flag">Flag</th>
+        <th data-sort="rounds" class="num">Rounds</th>
       </tr></thead><tbody>${rows||`<tr><td colspan="10" class="muted" style="padding:20px;text-align:center">No players have both <b>Field</b> and <b>Vegas</b> checked yet — set them on the Players tab.</td></tr>`}</tbody></table></div>
     </div>`;
 }
@@ -2093,7 +2101,17 @@ function switchView(v){
   if(v==="sync") renderSync();
   if(v==="help") renderHelp();
 }
-function renderAll(){ renderPlayers(); if($("#view-anomalies").classList.contains("active"))renderAnomalies(); if($("#view-teams").classList.contains("active"))renderTeams(); }
+function renderAll(){
+  renderPlayers();
+  // Keep whichever data-derived view is currently open in sync after any data
+  // change (GHIN pull, import, edit, or a cloud-sync update from a teammate).
+  if($("#view-anomalies").classList.contains("active"))renderAnomalies();
+  if($("#view-teams").classList.contains("active"))renderTeams();
+  if($("#view-vegas").classList.contains("active"))renderVegas();
+  if($("#view-watch").classList.contains("active"))renderWatch();
+  if($("#view-overview").classList.contains("active"))renderOverview();
+  if($("#view-team-anomaly").classList.contains("active"))renderTeamAnomalies();
+}
 
 document.addEventListener("DOMContentLoaded",()=>{
   // tabs
@@ -2121,6 +2139,10 @@ document.addEventListener("DOMContentLoaded",()=>{
     const eb=e.target.closest("[data-edit]"); if(eb){ openPlayer(eb.dataset.edit); return; }
     const th=e.target.closest("th[data-sort]"); if(th && !th.classList.contains("no-sort")){ const k=th.dataset.sort; if(sortKey===k)sortDir*=-1; else {sortKey=k;sortDir=(k==="name"||k==="ghin")?1:-1;} renderPlayers(); return; }
     const tr=e.target.closest("tr[data-id]"); if(tr) openPlayer(tr.dataset.id);
+  });
+  // Vegas table: sortable headers (the section persists; its table is re-rendered each time)
+  $("#view-vegas").addEventListener("click",e=>{
+    const th=e.target.closest("th[data-sort]"); if(th && !th.classList.contains("no-sort")){ const k=th.dataset.sort; if(vegasSortKey===k)vegasSortDir*=-1; else {vegasSortKey=k;vegasSortDir=(k==="name"||k==="ghin")?1:-1;} renderVegas(); }
   });
   // anomalies (delegated view button)
   $("#anomalyList").addEventListener("click",e=>{ const b=e.target.closest("[data-edit]"); if(b) openPlayer(b.dataset.edit); });
